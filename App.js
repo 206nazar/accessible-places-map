@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { onAuthStateChanged } from "firebase/auth";
-import PlaceDetailsScreen from "./screens/PlaceDetailsScreen";
 
 import { auth } from "./firebaseConfig";
 
@@ -13,6 +12,8 @@ import LoginScreen from "./screens/LoginScreen";
 import RegisterScreen from "./screens/RegisterScreen";
 import RoleSelectScreen from "./screens/RoleSelectScreen";
 import AddPlaceScreen from "./screens/AddPlaceScreen";
+import PlaceDetailsScreen from "./screens/PlaceDetailsScreen";
+import EditPlaceScreen from "./screens/EditPlaceScreen"; // ✅ назва файлу саме така
 
 const Stack = createNativeStackNavigator();
 
@@ -33,17 +34,14 @@ export default function App() {
   return (
     <NavigationContainer>
       <Stack.Navigator initialRouteName="Home">
-        {/* Головний екран (карта/фільтри/кнопка акаунт) */}
         <Stack.Screen name="Home" options={{ headerShown: false }}>
           {(props) => <HomeScreen {...props} user={user} />}
         </Stack.Screen>
 
-        {/* Кабінет компанії */}
         <Stack.Screen name="CompanyHome" options={{ title: "Кабінет компанії" }}>
           {(props) => <CompanyHomeScreen {...props} user={user} />}
         </Stack.Screen>
 
-        {/* Акаунт/Вхід/Реєстрація */}
         <Stack.Screen name="Account" component={AccountScreen} options={{ title: "Акаунт" }} />
         <Stack.Screen name="Login" component={LoginScreen} options={{ title: "Вхід" }} />
         <Stack.Screen name="Register" component={RegisterScreen} options={{ title: "Реєстрація" }} />
@@ -51,8 +49,8 @@ export default function App() {
 
         <Stack.Screen name="PlaceDetails" component={PlaceDetailsScreen} options={{ title: "Місце" }} />
 
-        {/* Додати місце */}
         <Stack.Screen name="AddPlace" component={AddPlaceScreen} options={{ title: "Додати місце" }} />
+        <Stack.Screen name="EditPlace" component={EditPlaceScreen} options={{ title: "Редагувати місце" }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
