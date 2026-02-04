@@ -1,8 +1,12 @@
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal, StyleSheet, Text, TouchableOpacity, View, Switch } from "react-native";
 import { signOut } from "firebase/auth";
 import { auth } from "../firebaseConfig";
+import { useTheme } from "../theme/ThemeContext";
 
 export default function SideMenu({ visible, onClose, navigation, user, role }) {
+  const { theme, mode, toggleTheme } = useTheme();
+  const c = theme.colors;
+
   const go = (screen) => {
     onClose();
     navigation.navigate(screen);
@@ -20,45 +24,43 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
-        {/* натиск поза меню — закрити */}
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity style={[styles.backdrop, { backgroundColor: c.overlay }]} activeOpacity={1} onPress={onClose} />
 
-        {/* саме меню */}
-        <View style={styles.menu}>
-          <Text style={styles.title}>Меню</Text>
+        <View style={[styles.menu, { backgroundColor: c.surface, borderColor: c.border }]}>
+          <Text style={[styles.title, { color: c.text }]}>Меню</Text>
 
-          <Text style={styles.section}>Категорії</Text>
-          <TouchableOpacity style={styles.item} onPress={() => alert("Фільтр: Заклади харчування (зробимо далі)")}>
-            <Text style={styles.itemText}>🍽️ Заклади харчування</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.item} onPress={() => alert("Фільтр: Держ установи (зробимо далі)")}>
-            <Text style={styles.itemText}>🏛️ Держ установи</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.item} onPress={() => alert("Фільтр: Медицина (зробимо далі)")}>
-            <Text style={styles.itemText}>🏥 Медицина</Text>
-          </TouchableOpacity>
+          <Text style={[styles.section, { color: c.muted }]}>Акаунт</Text>
 
-          <View style={styles.divider} />
-
-          <Text style={styles.section}>Акаунт</Text>
-          <TouchableOpacity style={styles.item} onPress={() => go("Account")}>
-            <Text style={styles.itemText}>👤 Профіль / Вхід</Text>
+          <TouchableOpacity style={[styles.item, { backgroundColor: c.card }]} onPress={() => go("Account")}>
+            <Text style={[styles.itemText, { color: c.text }]}>👤 Профіль / Вхід</Text>
           </TouchableOpacity>
 
           {user && role === "company" ? (
-            <TouchableOpacity style={styles.item} onPress={() => go("CompanyHome")}>
-              <Text style={styles.itemText}>🏢 Кабінет компанії</Text>
+            <TouchableOpacity style={[styles.item, { backgroundColor: c.card }]} onPress={() => go("CompanyHome")}>
+              <Text style={[styles.itemText, { color: c.text }]}>🏢 Кабінет компанії</Text>
             </TouchableOpacity>
           ) : null}
 
           {user ? (
-            <TouchableOpacity style={[styles.item, styles.danger]} onPress={onLogout}>
-              <Text style={[styles.itemText, styles.dangerText]}>🚪 Вийти</Text>
+            <TouchableOpacity
+              style={[styles.item, { backgroundColor: c.dangerBg, borderWidth: 1, borderColor: c.dangerBorder }]}
+              onPress={onLogout}
+            >
+              <Text style={[styles.itemText, { color: c.dangerText }]}>🚪 Вийти</Text>
             </TouchableOpacity>
           ) : null}
 
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
+
+          <Text style={[styles.section, { color: c.muted }]}>Налаштування</Text>
+
+          <View style={[styles.switchRow, { backgroundColor: c.card }]}>
+            <Text style={[styles.itemText, { color: c.text }]}>🌙 Темна тема</Text>
+            <Switch value={mode === "dark"} onValueChange={toggleTheme} />
+          </View>
+
           <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Text style={styles.closeText}>Закрити</Text>
+            <Text style={[styles.closeText, { color: c.muted }]}>Закрити</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -68,35 +70,38 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, flexDirection: "row" },
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)" },
+  backdrop: { flex: 1 },
 
   menu: {
     width: 280,
-    backgroundColor: "#fff",
     paddingTop: 18,
     paddingHorizontal: 14,
     paddingBottom: 14,
-    borderTopRightRadius: 18,
-    borderBottomRightRadius: 18,
+    borderLeftWidth: 1,
   },
 
   title: { fontSize: 18, fontWeight: "bold", marginBottom: 10 },
-  section: { marginTop: 10, marginBottom: 6, color: "gray", fontWeight: "700" },
+  section: { marginTop: 10, marginBottom: 6, fontWeight: "700" },
 
   item: {
     paddingVertical: 12,
     paddingHorizontal: 10,
     borderRadius: 12,
-    backgroundColor: "#f6f6f6",
     marginBottom: 8,
   },
   itemText: { fontWeight: "600" },
 
-  divider: { height: 1, backgroundColor: "#eee", marginVertical: 10 },
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+  },
 
-  danger: { backgroundColor: "#fff0f0", borderWidth: 1, borderColor: "#ffd0d0" },
-  dangerText: { color: "#b00020" },
+  divider: { height: 1, marginVertical: 10 },
 
-  closeBtn: { marginTop: 10, paddingVertical: 12, alignItems: "center" },
-  closeText: { color: "gray", fontWeight: "700" },
+  closeBtn: { marginTop: 14, paddingVertical: 12, alignItems: "center" },
+  closeText: { fontWeight: "700" },
 });

@@ -13,27 +13,45 @@ import RegisterScreen from "./screens/RegisterScreen";
 import RoleSelectScreen from "./screens/RoleSelectScreen";
 import AddPlaceScreen from "./screens/AddPlaceScreen";
 import PlaceDetailsScreen from "./screens/PlaceDetailsScreen";
-import EditPlaceScreen from "./screens/EditPlaceScreen"; // ✅ назва файлу саме така
+import EditPlaceScreen from "./screens/EditPlaceScreen";
+
+import { ThemeProvider, useTheme } from "./theme/ThemeContext";
 
 const Stack = createNativeStackNavigator();
 
-export default function App() {
+function AppInner() {
   const [user, setUser] = useState(null);
-  const [ready, setReady] = useState(false);
+  const [readyAuth, setReadyAuth] = useState(false);
+
+  const { theme, ready: readyTheme } = useTheme();
+
+  // ✅ fallback, щоб НЕ падало навіть якщо theme/ colors десь undefined
+  const colors = theme?.colors ?? {
+    bg: "#ffffff",
+    surface: "#ffffff",
+    text: "#111111",
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u || null);
-      setReady(true);
+      setReadyAuth(true);
     });
     return unsub;
   }, []);
 
-  if (!ready) return null;
+  if (!readyAuth || !readyTheme) return null;
 
   return (
     <NavigationContainer>
-      <Stack.Navigator initialRouteName="Home">
+      <Stack.Navigator
+        initialRouteName="Home"
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.surface },
+          headerTintColor: colors.text,
+          contentStyle: { backgroundColor: colors.bg },
+        }}
+      >
         <Stack.Screen name="Home" options={{ headerShown: false }}>
           {(props) => <HomeScreen {...props} user={user} />}
         </Stack.Screen>
@@ -53,5 +71,13 @@ export default function App() {
         <Stack.Screen name="EditPlace" component={EditPlaceScreen} options={{ title: "Редагувати місце" }} />
       </Stack.Navigator>
     </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
   );
 }

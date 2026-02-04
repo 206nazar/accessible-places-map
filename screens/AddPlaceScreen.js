@@ -1,14 +1,30 @@
 import { useMemo, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Switch, ScrollView } from "react-native";
 import { addDoc, collection, serverTimestamp, doc, getDoc } from "firebase/firestore";
+import { Picker } from "@react-native-picker/picker";
 
 import { auth, db } from "../firebaseConfig";
 
-export default function AddPlaceScreen({ navigation }) {
+const CATEGORY_OPTIONS = [
+  { key: "food", label: "🍽️ Заклади харчування" },
+  { key: "gov", label: "🏛️ Держ. установи" },
+  { key: "medical", label: "🏥 Медицина" },
+  { key: "shops", label: "🛒 Магазини" },
+  { key: "education", label: "🎓 Освіта" },
+  { key: "sport", label: "🏟️ Спорт" },
+  { key: "parks", label: "🌳 Парки" },
+];
+
+export default function AddPlaceScreen({ navigation, route }) {
+  const presetCategory = route?.params?.presetCategory;
+  const initialCategory = presetCategory && presetCategory !== "all" ? presetCategory : "food";
+
+  const [category, setCategory] = useState(initialCategory);
+
   const [title, setTitle] = useState("");
-  const [desc, setDesc] = useState(""); // короткий опис
-  const [accessInfo, setAccessInfo] = useState(""); // повний опис доступності
-  const [photoUrl, setPhotoUrl] = useState(""); // поки просто URL (пізніше: завантаження фото)
+  const [desc, setDesc] = useState("");
+  const [accessInfo, setAccessInfo] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
   const [lat, setLat] = useState("50.6199");
   const [lng, setLng] = useState("26.2516");
 
@@ -47,6 +63,9 @@ export default function AddPlaceScreen({ navigation }) {
         ownerUid: uid,
         ownerName,
 
+        // ✅ категорія
+        category,
+
         title: title.trim(),
         description: desc.trim(),
         accessInfo: accessInfo.trim(),
@@ -58,9 +77,7 @@ export default function AddPlaceScreen({ navigation }) {
         accessibility: { ramp, wideDoor, stairs, accessibleToilet, elevator },
         meetsBasicNorms,
 
-        // ✅ Для тесту одразу показуємо на карті
         status: "approved",
-        // якщо хочеш модерацію — зміни на "pending"
         createdAt: serverTimestamp(),
       });
 
@@ -75,14 +92,18 @@ export default function AddPlaceScreen({ navigation }) {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Додати місце</Text>
 
+      <Text style={styles.section}>Категорія</Text>
+      <View style={styles.pickerWrap}>
+        <Picker selectedValue={category} onValueChange={setCategory} style={styles.picker}>
+          {CATEGORY_OPTIONS.map((x) => (
+            <Picker.Item key={x.key} label={x.label} value={x.key} />
+          ))}
+        </Picker>
+      </View>
+
       <TextInput style={styles.input} placeholder="Назва" value={title} onChangeText={setTitle} />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Короткий опис"
-        value={desc}
-        onChangeText={setDesc}
-      />
+      <TextInput style={styles.input} placeholder="Короткий опис" value={desc} onChangeText={setDesc} />
 
       <TextInput
         style={[styles.input, { height: 90 }]}
@@ -135,7 +156,19 @@ const styles = StyleSheet.create({
   container: { padding: 20, paddingBottom: 40, backgroundColor: "#fff" },
   title: { fontSize: 20, fontWeight: "bold", marginBottom: 10 },
   input: { borderWidth: 1, borderColor: "#ccc", borderRadius: 10, padding: 12, marginBottom: 10 },
+
   section: { marginTop: 10, marginBottom: 6, fontWeight: "bold" },
+
+  pickerWrap: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 10,
+    overflow: "hidden",
+    marginBottom: 10,
+    backgroundColor: "#fafafa",
+  },
+  picker: { height: 48 },
+
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
   rowText: { flex: 1, paddingRight: 10 },
   hint: { marginTop: 6, color: "gray" },

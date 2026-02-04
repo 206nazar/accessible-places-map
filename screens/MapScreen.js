@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { collection, getDocs, limit, query, where } from "firebase/firestore";
@@ -13,10 +13,6 @@ const DEFAULT_REGION = {
 
 export default function MapScreen({ navigation, places }) {
   const mapRef = useRef(null);
-
-  useEffect(() => {
-    // пізніше: тут будемо центрувати по геолокації
-  }, []);
 
   return (
     <View style={styles.container}>
@@ -40,12 +36,17 @@ export default function MapScreen({ navigation, places }) {
   );
 }
 
-export async function fetchPlaces() {
-  const q = query(
-    collection(db, "places"),
+// ✅ category: "all" | "food" | "gov" | ...
+export async function fetchPlaces(category = "all") {
+  const base = [
     where("status", "==", "approved"),
-    limit(200)
-  );
+  ];
+
+  if (category && category !== "all") {
+    base.push(where("category", "==", category));
+  }
+
+  const q = query(collection(db, "places"), ...base, limit(200));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }

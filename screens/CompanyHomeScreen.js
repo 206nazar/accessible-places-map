@@ -1,9 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, FlatList } from "react-native";
 import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 
+import { useTheme } from "../theme/ThemeContext";
+
 export default function CompanyHomeScreen({ navigation }) {
+  const { theme } = useTheme();
+  const colors = theme.colors;
+
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const [places, setPlaces] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -94,26 +101,38 @@ export default function CompanyHomeScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: "#fff" },
-  title: { fontSize: 22, fontWeight: "bold", marginBottom: 10 },
-  subtitle: { marginTop: 12, fontSize: 16, fontWeight: "800" },
-  gray: { color: "gray", marginTop: 10 },
+function makeStyles(c) {
+  return StyleSheet.create({
+    container: { flex: 1, padding: 16, backgroundColor: c.bg },
+    title: { fontSize: 22, fontWeight: "bold", marginBottom: 10, color: c.text },
+    subtitle: { marginTop: 12, fontSize: 16, fontWeight: "800", color: c.text },
+    gray: { color: c.muted, marginTop: 10 },
 
-  actions: { flexDirection: "row", gap: 10 },
-  btnPrimary: { flex: 1, backgroundColor: "#1f7a8c", padding: 12, borderRadius: 12, alignItems: "center" },
-  btnPrimaryText: { color: "#fff", fontWeight: "bold" },
-  btnGhost: { paddingHorizontal: 14, borderRadius: 12, justifyContent: "center", borderWidth: 1, borderColor: "#ddd" },
-  btnGhostText: { fontWeight: "800", color: "#1f7a8c" },
+    actions: { flexDirection: "row", gap: 10 },
 
-  card: { marginTop: 10, borderWidth: 1, borderColor: "#eee", backgroundColor: "#fafafa", borderRadius: 14, padding: 12 },
-  cardTitle: { fontSize: 16, fontWeight: "bold" },
-  cardMeta: { color: "gray", marginTop: 4 },
+    btnPrimary: { flex: 1, backgroundColor: c.primary, padding: 12, borderRadius: 12, alignItems: "center" },
+    btnPrimaryText: { color: "#fff", fontWeight: "bold" },
 
-  row: { flexDirection: "row", gap: 10, marginTop: 10 },
-  smallBtn: { flex: 1, backgroundColor: "#1f7a8c", paddingVertical: 10, borderRadius: 12, alignItems: "center" },
-  smallBtnText: { color: "#fff", fontWeight: "bold" },
+    btnGhost: {
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.card,
+    },
+    btnGhostText: { fontWeight: "800", color: c.primary },
 
-  smallBtnOutline: { flex: 1, borderWidth: 1, borderColor: "#1f7a8c", paddingVertical: 10, borderRadius: 12, alignItems: "center" },
-  smallBtnOutlineText: { color: "#1f7a8c", fontWeight: "bold" },
-});
+    card: { marginTop: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, borderRadius: 14, padding: 12 },
+    cardTitle: { fontSize: 16, fontWeight: "bold", color: c.text },
+    cardMeta: { color: c.muted, marginTop: 4 },
+
+    row: { flexDirection: "row", gap: 10, marginTop: 10 },
+
+    smallBtn: { flex: 1, backgroundColor: c.primary, paddingVertical: 10, borderRadius: 12, alignItems: "center" },
+    smallBtnText: { color: "#fff", fontWeight: "bold" },
+
+    smallBtnOutline: { flex: 1, borderWidth: 1, borderColor: c.primary, paddingVertical: 10, borderRadius: 12, alignItems: "center" },
+    smallBtnOutlineText: { color: c.primary, fontWeight: "bold" },
+  });
+}
