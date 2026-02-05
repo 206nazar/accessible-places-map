@@ -1,38 +1,30 @@
-import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { useState, useMemo } from "react";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
 
-import { auth, db } from "../firebaseConfig";
+import { auth } from "../firebaseConfig";
+import { useTheme } from "../theme/ThemeContext";
 
 export default function LoginScreen({ navigation }) {
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const onLogin = async () => {
+  const login = async () => {
+    if (!email.trim() || !password) return alert("Введи email і пароль.");
+
     try {
-      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      await signInWithEmailAndPassword(auth, email.trim(), password);
 
-      // беремо роль з Firestore
-      const snap = await getDoc(doc(db, "users", cred.user.uid));
-      const role = snap.exists() ? snap.data().role : "person";
-
-      Alert.alert("Готово", "Ви увійшли ✅");
-
-      // 🔥 перекидаємо на потрібний екран
-      if (role === "company") {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: "CompanyHome" }],
-        });
-      } else {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: "Home" }],
-        });
-      }
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "Home" }],
+      });
     } catch (e) {
-      Alert.alert("Помилка входу", e.message);
+      alert(e.message);
     }
   };
 
@@ -43,36 +35,50 @@ export default function LoginScreen({ navigation }) {
       <TextInput
         style={styles.input}
         placeholder="Email"
+        placeholderTextColor={c.muted}
         value={email}
-        autoCapitalize="none"
-        keyboardType="email-address"
         onChangeText={setEmail}
+        autoCapitalize="none"
       />
 
       <TextInput
         style={styles.input}
         placeholder="Пароль"
+        placeholderTextColor={c.muted}
         value={password}
-        secureTextEntry
         onChangeText={setPassword}
+        secureTextEntry
       />
 
-      <TouchableOpacity style={styles.btn} onPress={onLogin}>
+      <TouchableOpacity style={styles.btn} onPress={login}>
         <Text style={styles.btnText}>Увійти</Text>
       </TouchableOpacity>
 
-      <Text style={styles.link} onPress={() => navigation.navigate("Register")}>
-        Немає акаунту? Реєстрація
-      </Text>
+      <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+        <Text style={styles.link}>Немає акаунту? Реєстрація</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, justifyContent: "center" },
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 16, textAlign: "center" },
-  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 12, padding: 12, marginBottom: 10 },
-  btn: { backgroundColor: "#1f7a8c", padding: 14, borderRadius: 12, alignItems: "center", marginTop: 6 },
-  btnText: { color: "#fff", fontWeight: "bold" },
-  link: { color: "#1f7a8c", textAlign: "center", marginTop: 14, fontWeight: "600" },
-});
+function makeStyles(c) {
+  return StyleSheet.create({
+    container: { flex: 1, padding: 18, backgroundColor: c.bg, justifyContent: "center" },
+    title: { fontSize: 22, fontWeight: "bold", marginBottom: 12, textAlign: "center", color: c.text },
+
+    input: {
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 10,
+      color: c.text,
+      backgroundColor: c.surface,
+    },
+
+    btn: { backgroundColor: c.primary, padding: 14, borderRadius: 12, alignItems: "center" },
+    btnText: { color: "#fff", fontWeight: "bold" },
+
+    link: { textAlign: "center", marginTop: 14, color: c.primary, fontWeight: "700" },
+  });
+}

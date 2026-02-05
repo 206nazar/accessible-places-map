@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+import { useTheme } from "../theme/ThemeContext";
 
 export default function EditPlaceScreen({ route, navigation }) {
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
+
   const placeId = route?.params?.placeId;
 
   const [title, setTitle] = useState("");
@@ -62,7 +67,7 @@ export default function EditPlaceScreen({ route, navigation }) {
   if (loading) {
     return (
       <View style={styles.container}>
-        <Text>Завантаження...</Text>
+        <Text style={styles.muted}>Завантаження...</Text>
       </View>
     );
   }
@@ -71,11 +76,18 @@ export default function EditPlaceScreen({ route, navigation }) {
     <View style={styles.container}>
       <Text style={styles.title}>Редагувати місце</Text>
 
-      <TextInput style={styles.input} placeholder="Назва" value={title} onChangeText={setTitle} />
+      <TextInput
+        style={styles.input}
+        placeholder="Назва"
+        placeholderTextColor={c.muted}
+        value={title}
+        onChangeText={setTitle}
+      />
 
       <TextInput
-        style={[styles.input, { height: 110 }]}
+        style={[styles.input, styles.textArea]}
         placeholder="Опис"
+        placeholderTextColor={c.muted}
         value={description}
         onChangeText={setDescription}
         multiline
@@ -88,10 +100,24 @@ export default function EditPlaceScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: "#fff" },
-  title: { fontSize: 22, fontWeight: "bold", marginBottom: 12 },
-  input: { borderWidth: 1, borderColor: "#ccc", borderRadius: 12, padding: 12, marginBottom: 10 },
-  btn: { backgroundColor: "#1f7a8c", padding: 14, borderRadius: 12, alignItems: "center", marginTop: 6 },
-  btnText: { color: "#fff", fontWeight: "bold" },
-});
+function makeStyles(c) {
+  return StyleSheet.create({
+    container: { flex: 1, padding: 16, backgroundColor: c.bg },
+    title: { fontSize: 22, fontWeight: "bold", marginBottom: 12, color: c.text },
+    muted: { color: c.muted, fontWeight: "700" },
+
+    input: {
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.card,
+      color: c.text,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 10,
+    },
+    textArea: { height: 110, textAlignVertical: "top" },
+
+    btn: { backgroundColor: c.primary, padding: 14, borderRadius: 12, alignItems: "center", marginTop: 6 },
+    btnText: { color: "#fff", fontWeight: "bold" },
+  });
+}

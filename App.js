@@ -15,6 +15,11 @@ import AddPlaceScreen from "./screens/AddPlaceScreen";
 import PlaceDetailsScreen from "./screens/PlaceDetailsScreen";
 import EditPlaceScreen from "./screens/EditPlaceScreen";
 
+import MyProfileScreen from "./screens/MyProfileScreen";
+import MyReviewsScreen from "./screens/MyReviewsScreen";
+import CompanyReviewsScreen from "./screens/CompanyReviewsScreen";
+import ReviewEditScreen from "./screens/ReviewEditScreen";
+
 import { ThemeProvider, useTheme } from "./theme/ThemeContext";
 
 const Stack = createNativeStackNavigator();
@@ -24,13 +29,6 @@ function AppInner() {
   const [readyAuth, setReadyAuth] = useState(false);
 
   const { theme, ready: readyTheme } = useTheme();
-
-  // ✅ fallback, щоб НЕ падало навіть якщо theme/ colors десь undefined
-  const colors = theme?.colors ?? {
-    bg: "#ffffff",
-    surface: "#ffffff",
-    text: "#111111",
-  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -47,9 +45,9 @@ function AppInner() {
       <Stack.Navigator
         initialRouteName="Home"
         screenOptions={{
-          headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.text,
-          contentStyle: { backgroundColor: colors.bg },
+          headerStyle: { backgroundColor: theme.colors.surface },
+          headerTintColor: theme.colors.text,
+          contentStyle: { backgroundColor: theme.colors.bg },
         }}
       >
         <Stack.Screen name="Home" options={{ headerShown: false }}>
@@ -60,12 +58,41 @@ function AppInner() {
           {(props) => <CompanyHomeScreen {...props} user={user} />}
         </Stack.Screen>
 
-        <Stack.Screen name="Account" component={AccountScreen} options={{ title: "Акаунт" }} />
-        <Stack.Screen name="Login" component={LoginScreen} options={{ title: "Вхід" }} />
-        <Stack.Screen name="Register" component={RegisterScreen} options={{ title: "Реєстрація" }} />
-        <Stack.Screen name="RoleSelect" component={RoleSelectScreen} options={{ title: "Хто ви?" }} />
+        <Stack.Screen name="CompanyReviews" options={{ title: "Відгуки про мої точки" }}>
+          {(props) => <CompanyReviewsScreen {...props} user={user} />}
+        </Stack.Screen>
 
-        <Stack.Screen name="PlaceDetails" component={PlaceDetailsScreen} options={{ title: "Місце" }} />
+        <Stack.Screen name="Account" options={{ title: "Акаунт" }}>
+          {(props) => <AccountScreen {...props} user={user} />}
+        </Stack.Screen>
+
+        <Stack.Screen name="MyProfile" options={{ title: "Мій профіль" }}>
+          {(props) => <MyProfileScreen {...props} user={user} />}
+        </Stack.Screen>
+
+        <Stack.Screen name="MyReviews" options={{ title: "Мої відгуки" }}>
+          {(props) => <MyReviewsScreen {...props} user={user} />}
+        </Stack.Screen>
+
+        <Stack.Screen name="ReviewEdit" options={{ title: "Відгук" }}>
+          {(props) => <ReviewEditScreen {...props} user={user} />}
+        </Stack.Screen>
+
+        <Stack.Screen name="Login">
+          {(props) => <LoginScreen {...props} user={user} />}
+        </Stack.Screen>
+
+        <Stack.Screen name="Register">
+          {(props) => <RegisterScreen {...props} user={user} />}
+        </Stack.Screen>
+
+        <Stack.Screen name="RoleSelect">
+          {(props) => <RoleSelectScreen {...props} user={user} />}
+        </Stack.Screen>
+
+        <Stack.Screen name="PlaceDetails" options={{ title: "Місце" }}>
+          {(props) => <PlaceDetailsScreen {...props} user={user} />}
+        </Stack.Screen>
 
         <Stack.Screen name="AddPlace" component={AddPlaceScreen} options={{ title: "Додати місце" }} />
         <Stack.Screen name="EditPlace" component={EditPlaceScreen} options={{ title: "Редагувати місце" }} />

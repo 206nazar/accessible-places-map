@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Modal,
   Platform,
   SafeAreaView,
   StatusBar,
@@ -20,7 +21,6 @@ const CATEGORIES = [
   { key: "food", label: "🍽️ Харчування" },
   { key: "gov", label: "🏛️ Держ. установи" },
   { key: "medical", label: "🏥 Медицина" },
-
   { key: "education", label: "🎓 Освіта" },
   { key: "shops", label: "🛒 Магазини" },
   { key: "services", label: "🧰 Послуги" },
@@ -39,7 +39,7 @@ export default function HomeScreen({ navigation, user }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const [activeCategory, setActiveCategory] = useState("all");
-  const [catsOpen, setCatsOpen] = useState(false); // ✅ Варіант A
+  const [catsOpen, setCatsOpen] = useState(false);
 
   const loadRole = async () => {
     if (!user) return setRole(null);
@@ -62,21 +62,14 @@ export default function HomeScreen({ navigation, user }) {
 
   const canAdd = !!user && role === "company";
 
-  const activeLabel = useMemo(() => {
-    const found = CATEGORIES.find((x) => x.key === activeCategory);
-    return found ? found.label : "📍 Усі";
-  }, [activeCategory]);
-
-  // ✅ Фільтр по категорії
   const filteredPlaces = useMemo(() => {
     if (activeCategory === "all") return places;
     return places.filter((p) => p.category === activeCategory);
   }, [places, activeCategory]);
 
-  const pickCategory = (key) => {
-    setActiveCategory(key);
-    setCatsOpen(false); // ✅ після вибору згортаємо
-  };
+  const activeLabel = useMemo(() => {
+    return CATEGORIES.find((x) => x.key === activeCategory)?.label || "📍 Усі";
+  }, [activeCategory]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -90,8 +83,8 @@ export default function HomeScreen({ navigation, user }) {
         role={role}
       />
 
+      {/* Top bar */}
       <View style={styles.topBar}>
-        <View style={{ width: 40 }} />
         <Text style={styles.appTitle}>Accessible Places</Text>
 
         <TouchableOpacity style={styles.burgerBtn} onPress={() => setMenuOpen(true)}>
@@ -99,56 +92,30 @@ export default function HomeScreen({ navigation, user }) {
         </TouchableOpacity>
       </View>
 
-      {/* ✅ Панель категорій: згорнуто/розгорнуто */}
-      <View style={styles.catsHeader}>
-        <View style={styles.activePill}>
-          <Text style={styles.activePillText} numberOfLines={1}>
+      {/* Category row (compact) */}
+      <View style={styles.filterRow}>
+        <TouchableOpacity style={styles.activeCat} onPress={() => setCatsOpen(true)} activeOpacity={0.9}>
+          <Text style={styles.activeCatText} numberOfLines={1}>
             {activeLabel}
           </Text>
-        </View>
+        </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.catsToggleBtn, catsOpen && styles.catsToggleBtnActive]}
-          onPress={() => setCatsOpen((v) => !v)}
-          activeOpacity={0.85}
-        >
-          <Text style={[styles.catsToggleText, catsOpen && styles.catsToggleTextActive]}>
-            Категорії {catsOpen ? "▴" : "▾"}
-          </Text>
+        <TouchableOpacity style={styles.catBtn} onPress={() => setCatsOpen(true)} activeOpacity={0.9}>
+          <Text style={styles.catBtnText}>Категорії ▾</Text>
         </TouchableOpacity>
       </View>
 
-      {catsOpen ? (
-        <View style={styles.catsWrap}>
-          {CATEGORIES.map((cat) => {
-            const active = activeCategory === cat.key;
-            return (
-              <TouchableOpacity
-                key={cat.key}
-                style={[styles.catChip, active && styles.catChipActive]}
-                onPress={() => pickCategory(cat.key)}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.catText, active && styles.catTextActive]} numberOfLines={1}>
-                  {cat.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      ) : null}
-
-      <View style={styles.actionsRow}>
-        {canAdd ? (
-          <TouchableOpacity style={styles.addBtn} onPress={() => navigation.navigate("AddPlace")}>
+      {/* Actions */}
+      {canAdd ? (
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={() => navigation.navigate("AddPlace", { presetCategory: activeCategory })}
+          >
             <Text style={styles.addBtnText}>+ Додати місце</Text>
           </TouchableOpacity>
-        ) : (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>Перегляд без входу ✅</Text>
-          </View>
-        )}
-      </View>
+        </View>
+      ) : null}
 
       <View style={{ flex: 1 }}>
         <MapScreen navigation={navigation} places={filteredPlaces} />
@@ -157,6 +124,42 @@ export default function HomeScreen({ navigation, user }) {
       <View style={styles.footer}>
         <Text style={styles.footerText}>© 2026 Accessible Places Map</Text>
       </View>
+
+      {/* Categories modal */}
+      <Modal visible={catsOpen} transparent animationType="fade" onRequestClose={() => setCatsOpen(false)}>
+        <View style={styles.catOverlay}>
+          <TouchableOpacity style={styles.catBackdrop} activeOpacity={1} onPress={() => setCatsOpen(false)} />
+
+          <View style={styles.catSheet}>
+            <Text style={styles.catTitle}>Категорії</Text>
+
+            <View style={styles.catGrid}>
+              {CATEGORIES.map((cat) => {
+                const active = cat.key === activeCategory;
+                return (
+                  <TouchableOpacity
+                    key={cat.key}
+                    style={[styles.catChip, active && styles.catChipActive]}
+                    onPress={() => {
+                      setActiveCategory(cat.key);
+                      setCatsOpen(false);
+                    }}
+                    activeOpacity={0.9}
+                  >
+                    <Text style={[styles.catChipText, active && styles.catChipTextActive]} numberOfLines={1}>
+                      {cat.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity style={styles.catClose} onPress={() => setCatsOpen(false)}>
+              <Text style={styles.catCloseText}>Закрити</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -176,111 +179,68 @@ function makeStyles(c) {
       borderBottomWidth: 1,
       borderBottomColor: c.border,
     },
+    appTitle: { fontSize: 18, fontWeight: "900", color: c.text },
+
     burgerBtn: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      backgroundColor: c.card,
-      alignItems: "center",
-      justifyContent: "center",
-      borderWidth: 1,
-      borderColor: c.border,
-    },
-    burgerText: { fontSize: 18, fontWeight: "900", color: c.text },
-    appTitle: { fontSize: 18, fontWeight: "bold", color: c.text },
-
-    // ✅ Заголовок категорій (компактний)
-    catsHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      paddingHorizontal: 12,
-      paddingTop: 10,
-      paddingBottom: 8,
-      backgroundColor: c.surface,
-      borderBottomWidth: 1,
-      borderBottomColor: c.border,
-    },
-    activePill: {
-      flex: 1,
-      height: 38,
-      borderRadius: 999,
-      backgroundColor: c.card,
-      borderWidth: 1,
-      borderColor: c.border,
-      justifyContent: "center",
-      paddingHorizontal: 12,
-    },
-    activePillText: { color: c.text, fontWeight: "800", fontSize: 13 },
-
-    catsToggleBtn: {
-      height: 38,
-      borderRadius: 999,
-      paddingHorizontal: 14,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: c.card,
-      borderWidth: 1,
-      borderColor: c.border,
-    },
-    catsToggleBtnActive: {
-      backgroundColor: c.primary,
-      borderColor: c.primary,
-    },
-    catsToggleText: { color: c.text, fontWeight: "800", fontSize: 13 },
-    catsToggleTextActive: { color: "#fff" },
-
-    // ✅ Блок категорій (показується тільки коли catsOpen=true)
-    catsWrap: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      paddingHorizontal: 12,
-      paddingTop: 10,
-      paddingBottom: 8,
-      backgroundColor: c.surface,
-      borderBottomWidth: 1,
-      borderBottomColor: c.border,
-    },
-    catChip: {
-      width: "31.5%",
-      height: 38,
-      borderRadius: 999,
-      backgroundColor: c.card,
-      borderWidth: 1,
-      borderColor: c.border,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 10,
-    },
-    catChipActive: { backgroundColor: c.primary, borderColor: c.primary },
-    catText: { color: c.text, fontWeight: "800", fontSize: 13 },
-    catTextActive: { color: "#fff" },
-
-    actionsRow: {
-      paddingHorizontal: 14,
-      paddingTop: 10,
-      paddingBottom: 6,
-      backgroundColor: c.surface,
-    },
-
-    addBtn: {
-      backgroundColor: c.primary,
-      paddingVertical: 14,
-      borderRadius: 16,
-      alignItems: "center",
-    },
-    addBtnText: { color: "#fff", fontWeight: "bold" },
-
-    badge: {
-      paddingVertical: 12,
-      paddingHorizontal: 12,
+      width: 44,
+      height: 44,
       borderRadius: 14,
       backgroundColor: c.card,
       borderWidth: 1,
       borderColor: c.border,
+      alignItems: "center",
+      justifyContent: "center",
     },
-    badgeText: { color: c.muted, fontWeight: "600", textAlign: "center" },
+    burgerText: { fontSize: 18, fontWeight: "900", color: c.text },
+
+    filterRow: {
+      flexDirection: "row",
+      gap: 10,
+      paddingHorizontal: 14,
+      paddingTop: 10,
+      paddingBottom: 10,
+      backgroundColor: c.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    activeCat: {
+      flex: 1,
+      height: 44,
+      borderRadius: 16,
+      backgroundColor: c.card,
+      borderWidth: 1,
+      borderColor: c.border,
+      justifyContent: "center",
+      paddingHorizontal: 14,
+    },
+    activeCatText: { color: c.text, fontWeight: "900" },
+
+    catBtn: {
+      height: 44,
+      paddingHorizontal: 14,
+      borderRadius: 16,
+      backgroundColor: c.card,
+      borderWidth: 1,
+      borderColor: c.border,
+      justifyContent: "center",
+    },
+    catBtnText: { color: c.text, fontWeight: "900" },
+
+    actionsRow: {
+      paddingHorizontal: 14,
+      paddingTop: 10,
+      paddingBottom: 10,
+      backgroundColor: c.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    addBtn: {
+      backgroundColor: c.primary,
+      paddingVertical: 14,
+      borderRadius: 18,
+      alignItems: "center",
+    },
+    addBtnText: { color: "#fff", fontWeight: "900" },
 
     footer: {
       paddingVertical: 10,
@@ -289,5 +249,43 @@ function makeStyles(c) {
       backgroundColor: c.surface,
     },
     footerText: { textAlign: "center", color: c.muted, fontSize: 12 },
+
+    // modal categories
+    catOverlay: { flex: 1, justifyContent: "center", paddingHorizontal: 18 },
+    catBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: c.overlay },
+
+    catSheet: {
+      backgroundColor: c.surface,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: c.border,
+      padding: 14,
+    },
+    catTitle: { color: c.text, fontWeight: "900", fontSize: 18, marginBottom: 12 },
+
+    catGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "space-between",
+      rowGap: 10,
+    },
+    catChip: {
+      width: "48%",
+      height: 44,
+      borderRadius: 16,
+      backgroundColor: c.card,
+      borderWidth: 1,
+      borderColor: c.border,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 10,
+    },
+    catChipActive: { backgroundColor: c.primary, borderColor: c.primary },
+
+    catChipText: { color: c.text, fontWeight: "900" },
+    catChipTextActive: { color: "#fff" },
+
+    catClose: { marginTop: 12, paddingVertical: 10, alignItems: "center" },
+    catCloseText: { color: c.muted, fontWeight: "800" },
   });
 }

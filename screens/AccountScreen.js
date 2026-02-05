@@ -1,52 +1,52 @@
+import { useEffect } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { signOut } from "firebase/auth";
-import { auth } from "../firebaseConfig";
+import { useTheme } from "../theme/ThemeContext";
 
 export default function AccountScreen({ navigation, user }) {
-  if (!user) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Ви не увійшли</Text>
+  const { theme } = useTheme();
+  const c = theme.colors;
+  const styles = makeStyles(c);
 
-        <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate("Login")}>
-          <Text style={styles.btnText}>Увійти</Text>
-        </TouchableOpacity>
+  // ✅ якщо увійшов — не показуємо цей екран, а одразу в профіль
+  useEffect(() => {
+    if (user) {
+      navigation.replace("MyProfile");
+    }
+  }, [user, navigation]);
 
-        <TouchableOpacity style={[styles.btn, styles.btn2]} onPress={() => navigation.navigate("Register")}>
-          <Text style={styles.btnText}>Реєстрація</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.note}>
-          Вхід потрібен лише для додавання місць (для компаній).
-        </Text>
-      </View>
-    );
-  }
+  // Поки редірект не встиг — можна нічого не рендерити
+  if (user) return null;
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Ви увійшли</Text>
-      <Text style={styles.email}>{user.email}</Text>
+      <Text style={styles.title}>Ви не увійшли</Text>
 
-      <TouchableOpacity
-        style={[styles.btn, { backgroundColor: "#eee" }]}
-        onPress={async () => {
-          await signOut(auth);
-          navigation.popToTop();
-        }}
-      >
-        <Text style={[styles.btnText, { color: "#000" }]}>Вийти</Text>
+      <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate("Login")}>
+        <Text style={styles.btnText}>Вхід</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity style={[styles.btn, styles.btnOutline]} onPress={() => navigation.navigate("Register")}>
+        <Text style={[styles.btnText, styles.btnOutlineText]}>Реєстрація</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.note}>
+        Вхід потрібен для додавання місць (для компаній) та відгуків.
+      </Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, justifyContent: "center" },
-  title: { fontSize: 22, fontWeight: "bold", textAlign: "center", marginBottom: 10 },
-  email: { textAlign: "center", marginBottom: 20, color: "gray" },
-  btn: { backgroundColor: "#1f7a8c", padding: 14, borderRadius: 10, alignItems: "center", marginBottom: 10 },
-  btn2: { backgroundColor: "#155e6b" },
-  btnText: { color: "#fff", fontWeight: "bold" },
-  note: { marginTop: 10, textAlign: "center", color: "gray" },
-});
+function makeStyles(c) {
+  return StyleSheet.create({
+    container: { flex: 1, padding: 20, justifyContent: "center", backgroundColor: c.bg },
+    title: { fontSize: 22, fontWeight: "900", textAlign: "center", marginBottom: 14, color: c.text },
+
+    btn: { backgroundColor: c.primary, padding: 14, borderRadius: 16, alignItems: "center", marginBottom: 12 },
+    btnText: { color: "#fff", fontWeight: "900" },
+
+    btnOutline: { backgroundColor: c.card, borderWidth: 1, borderColor: c.border },
+    btnOutlineText: { color: c.text },
+
+    note: { marginTop: 10, textAlign: "center", color: c.muted, fontWeight: "700" },
+  });
+}
