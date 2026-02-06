@@ -33,10 +33,8 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
         <View style={styles.menu}>
           <Text style={styles.title}>Меню</Text>
 
-          {/* ===== АККАУНТ ===== */}
           <Text style={styles.section}>Акаунт</Text>
 
-          {/* ✅ Компанія */}
           {isCompany ? (
             <>
               <TouchableOpacity style={styles.item} onPress={() => go("CompanyHome")}>
@@ -48,7 +46,6 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
               </TouchableOpacity>
             </>
           ) : user ? (
-            /* ✅ Звичайний користувач */
             <>
               <TouchableOpacity style={styles.item} onPress={() => go("MyProfile")}>
                 <Text style={styles.itemText}>👤 Мій профіль</Text>
@@ -59,7 +56,6 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
               </TouchableOpacity>
             </>
           ) : (
-            /* ✅ Не увійшов */
             <>
               <TouchableOpacity style={styles.item} onPress={() => go("Login")}>
                 <Text style={styles.itemText}>🔐 Вхід</Text>
@@ -71,7 +67,6 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
             </>
           )}
 
-          {/* Вийти */}
           {user ? (
             <TouchableOpacity style={[styles.item, styles.danger]} onPress={onLogout}>
               <Text style={[styles.itemText, styles.dangerText]}>🚪 Вийти</Text>
@@ -80,7 +75,6 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
 
           <View style={styles.divider} />
 
-          {/* ===== НАЛАШТУВАННЯ ===== */}
           <Text style={styles.section}>Налаштування</Text>
           <View style={styles.itemRow}>
             <Text style={styles.itemText}>🌙 Темна тема</Text>

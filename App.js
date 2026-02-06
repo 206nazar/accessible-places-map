@@ -19,6 +19,8 @@ import MyProfileScreen from "./screens/MyProfileScreen";
 import MyReviewsScreen from "./screens/MyReviewsScreen";
 import CompanyReviewsScreen from "./screens/CompanyReviewsScreen";
 import ReviewEditScreen from "./screens/ReviewEditScreen";
+import RouteScreen from "./screens/RouteScreen";
+
 
 import { ThemeProvider, useTheme } from "./theme/ThemeContext";
 
@@ -92,6 +94,10 @@ function AppInner() {
 
         <Stack.Screen name="PlaceDetails" options={{ title: "Місце" }}>
           {(props) => <PlaceDetailsScreen {...props} user={user} />}
+        </Stack.Screen>
+
+        <Stack.Screen name="Route" options={{ title: "Маршрут" }}>
+          {(props) => <RouteScreen {...props} />}
         </Stack.Screen>
 
         <Stack.Screen name="AddPlace" component={AddPlaceScreen} options={{ title: "Додати місце" }} />

@@ -8,10 +8,14 @@ import {
   Switch,
   ScrollView,
   Modal,
+  Image,
+  ActivityIndicator,
 } from "react-native";
 import { addDoc, collection, serverTimestamp, doc, getDoc } from "firebase/firestore";
+import * as ImagePicker from "expo-image-picker";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-import { auth, db } from "../firebaseConfig";
+import { auth, db, storage } from "../firebaseConfig";
 import { useTheme } from "../theme/ThemeContext";
 
 const CATEGORY_OPTIONS = [
@@ -30,6 +34,22 @@ function getCategoryLabel(key) {
   return CATEGORY_OPTIONS.find((x) => x.key === key)?.label || "—";
 }
 
+async function uriToBlob(uri) {
+  const res = await fetch(uri);
+  return await res.blob();
+}
+
+async function uploadPlacePhotoAsync({ uid, placeTempId, index, uri }) {
+  const path = `places/${uid}/${placeTempId}_${index}.jpg`;
+  const storageRef = ref(storage, path);
+
+  const blob = await uriToBlob(uri);
+  await uploadBytes(storageRef, blob, { contentType: "image/jpeg" });
+  if (blob && typeof blob.close === "function") blob.close();
+
+  return await getDownloadURL(storageRef);
+}
+
 export default function AddPlaceScreen({ navigation, route }) {
   const { theme } = useTheme();
   const c = theme.colors;
@@ -43,9 +63,12 @@ export default function AddPlaceScreen({ navigation, route }) {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [accessInfo, setAccessInfo] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
   const [lat, setLat] = useState("50.6199");
   const [lng, setLng] = useState("26.2516");
+
+  // ✅ кілька фото (локальні uri до аплоаду)
+  const [photoUris, setPhotoUris] = useState([]);
+  const [uploading, setUploading] = useState(false);
 
   const [ramp, setRamp] = useState(true);
   const [wideDoor, setWideDoor] = useState(true);
@@ -66,8 +89,69 @@ export default function AddPlaceScreen({ navigation, route }) {
     }
   };
 
+  const addUris = (uris) => {
+    // без дублікатів
+    setPhotoUris((prev) => {
+      const set = new Set(prev);
+      for (const u of uris) set.add(u);
+      return Array.from(set).slice(0, 8); // ліміт 8 фото, щоб не було важко
+    });
+  };
+
+  const removeUri = (uri) => setPhotoUris((prev) => prev.filter((x) => x !== uri));
+
+  const pickFromGallery = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) return alert("Дай доступ до галереї.");
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.85,
+        allowsEditing: false, // для мульти-фото краще false
+        allowsMultipleSelection: true,
+        selectionLimit: 8,
+      });
+
+      if (result.canceled) return;
+
+      const uris = (result.assets || []).map((a) => a?.uri).filter(Boolean);
+      if (!uris.length) return alert("Не вдалося отримати фото.");
+
+      addUris(uris);
+    } catch (e) {
+      console.log("pick gallery error:", e);
+      alert(e?.message || String(e));
+    }
+  };
+
+  const takeFromCamera = async () => {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) return alert("Дай доступ до камери.");
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.85,
+        allowsEditing: true,
+        aspect: [4, 3],
+      });
+
+      if (result.canceled) return;
+
+      const uri = result.assets?.[0]?.uri;
+      if (!uri) return alert("Не вдалося отримати фото.");
+
+      addUris([uri]);
+    } catch (e) {
+      console.log("camera error:", e);
+      alert(e?.message || String(e));
+    }
+  };
+
   const save = async () => {
     if (!title.trim()) return alert("Введи назву місця.");
+
     const latitude = Number(lat);
     const longitude = Number(lng);
     if (Number.isNaN(latitude) || Number.isNaN(longitude)) return alert("Координати некоректні.");
@@ -75,19 +159,40 @@ export default function AddPlaceScreen({ navigation, route }) {
     const uid = auth.currentUser?.uid;
     if (!uid) return alert("Треба увійти як компанія, щоб додавати місця.");
 
+    setUploading(true);
     try {
       const ownerName = await getOwnerName(uid);
+
+      // ✅ аплоадимо всі фото (якщо є)
+      const placeTempId = `p_${Date.now()}`;
+      const photoUrls = [];
+      for (let i = 0; i < photoUris.length; i++) {
+        const url = await uploadPlacePhotoAsync({
+          uid,
+          placeTempId,
+          index: i + 1,
+          uri: photoUris[i],
+        });
+        photoUrls.push(url);
+      }
+
+      // для сумісності зі старим UI можна ще зберегти "photoUrl" як перше фото
+      const photoUrl = photoUrls[0] || "";
 
       await addDoc(collection(db, "places"), {
         ownerUid: uid,
         ownerName,
 
-        category, // ✅ категорія
+        category,
 
         title: title.trim(),
         description: desc.trim(),
         accessInfo: accessInfo.trim(),
-        photoUrl: photoUrl.trim(),
+
+        // ✅ нове поле
+        photoUrls,
+        // ✅ старе поле (не обов’язково, але корисно якщо десь ще використовується)
+        photoUrl,
 
         latitude,
         longitude,
@@ -102,7 +207,10 @@ export default function AddPlaceScreen({ navigation, route }) {
       alert("Додано ✅");
       navigation.goBack();
     } catch (e) {
+      console.log("save place error:", e);
       alert(e?.message || "Помилка збереження");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -117,8 +225,6 @@ export default function AddPlaceScreen({ navigation, route }) {
         <Text style={styles.title}>Додати місце</Text>
 
         <Text style={styles.section}>Категорія</Text>
-
-        {/* ✅ Замість Picker — свій селект */}
         <TouchableOpacity style={styles.select} onPress={() => setCatModal(true)} activeOpacity={0.85}>
           <Text style={styles.selectText} numberOfLines={1}>
             {getCategoryLabel(category)}
@@ -151,14 +257,35 @@ export default function AddPlaceScreen({ navigation, route }) {
           multiline
         />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Фото (URL) — поки так"
-          placeholderTextColor={c.muted}
-          value={photoUrl}
-          onChangeText={setPhotoUrl}
-          autoCapitalize="none"
-        />
+        {/* ✅ Фото */}
+        <Text style={styles.section}>Фото (до 8)</Text>
+
+        {photoUris.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+            <View style={styles.thumbRow}>
+              {photoUris.map((uri) => (
+                <View key={uri} style={styles.thumbWrap}>
+                  <Image source={{ uri }} style={styles.thumb} />
+                  <TouchableOpacity style={styles.thumbRemove} onPress={() => removeUri(uri)} activeOpacity={0.9}>
+                    <Text style={styles.thumbRemoveText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        ) : (
+          <Text style={styles.hintSmall}>Можна додати кілька фото (галерея) або по одному (камера).</Text>
+        )}
+
+        <View style={styles.btnRow}>
+          <TouchableOpacity style={styles.btnPrimary} onPress={pickFromGallery} activeOpacity={0.9}>
+            <Text style={styles.btnPrimaryText}>🖼️ Галерея</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.btnOutline} onPress={takeFromCamera} activeOpacity={0.9}>
+            <Text style={styles.btnOutlineText}>📷 Камера</Text>
+          </TouchableOpacity>
+        </View>
 
         <Text style={styles.section}>Координати</Text>
         <TextInput
@@ -191,16 +318,22 @@ export default function AddPlaceScreen({ navigation, route }) {
           Відповідає базовим нормам: {meetsBasicNorms ? "✅ так" : "❌ ні"}
         </Text>
 
-        <TouchableOpacity style={styles.btn} onPress={save} activeOpacity={0.9}>
-          <Text style={styles.btnText}>Зберегти</Text>
+        <TouchableOpacity style={styles.btnSave} onPress={save} activeOpacity={0.9} disabled={uploading}>
+          {uploading ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <ActivityIndicator />
+              <Text style={styles.btnSaveText}>Завантажую...</Text>
+            </View>
+          ) : (
+            <Text style={styles.btnSaveText}>Зберегти</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
 
-      {/* ✅ Модалка вибору категорії */}
+      {/* modal категорій */}
       <Modal visible={catModal} transparent animationType="fade" onRequestClose={() => setCatModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setCatModal(false)} />
-
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Категорія</Text>
 
@@ -256,7 +389,6 @@ function makeStyles(c) {
       color: c.text,
     },
 
-    // ✅ селект
     select: {
       height: 48,
       borderWidth: 1,
@@ -272,32 +404,60 @@ function makeStyles(c) {
     selectText: { color: c.text, fontWeight: "700", flex: 1, paddingRight: 10 },
     chev: { color: c.muted, fontSize: 16, fontWeight: "900" },
 
-    row: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingVertical: 8,
+    hintSmall: { color: c.muted, marginBottom: 10 },
+
+    // ✅ thumbnails
+    thumbRow: { flexDirection: "row", gap: 10, paddingRight: 12 },
+    thumbWrap: {
+      width: 96,
+      height: 72,
+      borderRadius: 12,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
     },
+    thumb: { width: "100%", height: "100%" },
+    thumbRemove: {
+      position: "absolute",
+      top: 6,
+      right: 6,
+      width: 26,
+      height: 26,
+      borderRadius: 999,
+      backgroundColor: "rgba(0,0,0,0.55)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    thumbRemoveText: { color: "#fff", fontWeight: "900" },
+
+    btnRow: { flexDirection: "row", gap: 10, marginBottom: 6 },
+    btnPrimary: { flex: 1, backgroundColor: c.primary, paddingVertical: 12, borderRadius: 14, alignItems: "center" },
+    btnPrimaryText: { color: "#fff", fontWeight: "900" },
+    btnOutline: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.card,
+      paddingVertical: 12,
+      borderRadius: 14,
+      alignItems: "center",
+    },
+    btnOutlineText: { color: c.text, fontWeight: "900" },
+
+    row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
     rowText: { flex: 1, paddingRight: 10, color: c.text, fontWeight: "600" },
 
     hint: { marginTop: 6, color: c.muted },
 
-    btn: { marginTop: 14, backgroundColor: c.primary, padding: 14, borderRadius: 12, alignItems: "center" },
-    btnText: { color: "#fff", fontWeight: "bold" },
+    btnSave: { marginTop: 14, backgroundColor: c.primary, padding: 14, borderRadius: 12, alignItems: "center" },
+    btnSaveText: { color: "#fff", fontWeight: "bold" },
 
-    // ✅ modal
+    // modal
     modalOverlay: { flex: 1, justifyContent: "center", padding: 18 },
     modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: c.overlay },
-
-    modalCard: {
-      backgroundColor: c.surface,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: c.border,
-      padding: 14,
-    },
+    modalCard: { backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.border, padding: 14 },
     modalTitle: { fontSize: 16, fontWeight: "900", color: c.text, marginBottom: 10 },
-
     modalItem: {
       paddingVertical: 12,
       paddingHorizontal: 12,
@@ -310,7 +470,6 @@ function makeStyles(c) {
     modalItemActive: { backgroundColor: c.primary, borderColor: c.primary },
     modalItemText: { color: c.text, fontWeight: "800" },
     modalItemTextActive: { color: "#fff" },
-
     modalClose: { marginTop: 6, paddingVertical: 12, alignItems: "center" },
     modalCloseText: { color: c.muted, fontWeight: "800" },
   });

@@ -1,11 +1,39 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Image, TextInput } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-
 import { auth, db, storage } from "../firebaseConfig";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useTheme } from "../theme/ThemeContext";
+
+async function uriToBlob(uri) {
+  const res = await fetch(uri);
+  return await res.blob();
+}
+
+function extFromMime(mime) {
+  if (!mime) return "jpg";
+  if (mime.includes("png")) return "png";
+  if (mime.includes("webp")) return "webp";
+  return "jpg";
+}
+
+async function uploadProfilePhotoAsync({ uid, uri, mimeType }) {
+  const ext = extFromMime(mimeType);
+  const path = `users/${uid}/avatar_${Date.now()}.${ext}`;
+  const storageRef = ref(storage, path);
+
+  const blob = await uriToBlob(uri);
+
+  await uploadBytes(storageRef, blob, {
+    contentType: mimeType || "image/jpeg",
+    cacheControl: "public,max-age=3600",
+  });
+
+  if (blob && typeof blob.close === "function") blob.close();
+
+  return await getDownloadURL(storageRef);
+}
 
 export default function MyProfileScreen() {
   const { theme } = useTheme();
@@ -15,197 +43,172 @@ export default function MyProfileScreen() {
   const user = auth.currentUser;
 
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-
-  const [role, setRole] = useState("person");
-  const [email, setEmail] = useState(user?.email || "");
+  const [profile, setProfile] = useState(null);
   const [nickname, setNickname] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
+
+  const loadProfile = async () => {
+    if (!user) return;
+    const snap = await getDoc(doc(db, "users", user.uid));
+    const data = snap.exists() ? snap.data() : null;
+    setProfile(data);
+    setNickname(data?.nickname || "");
+    setLoading(false);
+  };
 
   useEffect(() => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
-    (async () => {
-      try {
-        const snap = await getDoc(doc(db, "users", user.uid));
-        if (snap.exists()) {
-          const data = snap.data();
-          setRole(data.role || "person");
-          setNickname(data.nickname || "");
-          setPhotoUrl(data.photoUrl || "");
-        }
-      } catch (e) {
-        alert(e.message);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [user?.uid]);
+    loadProfile().catch((e) => alert(e.message));
+  }, []);
 
   if (!user) {
     return (
       <View style={styles.center}>
-        <Text style={styles.title}>Потрібно увійти</Text>
-        <Text style={styles.muted}>Зайди через меню → Вхід</Text>
+        <Text style={styles.muted}>Треба увійти, щоб бачити профіль.</Text>
       </View>
     );
   }
 
-  const saveProfile = async () => {
-    try {
-      const refDoc = doc(db, "users", user.uid);
-      await updateDoc(refDoc, {
-        nickname: nickname.trim(),
-        photoUrl: photoUrl || "",
-      });
-      alert("Збережено ✅");
-    } catch (e) {
-      alert(e.message);
-    }
-  };
-
-  const uploadImageToStorage = async (uri) => {
-    setUploading(true);
-    try {
-      // 1) blob з uri
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      // 2) шлях у Storage
-      const fileRef = ref(storage, `avatars/${user.uid}.jpg`);
-
-      // 3) upload
-      await uploadBytes(fileRef, blob, { contentType: "image/jpeg" });
-
-      // 4) url
-      const url = await getDownloadURL(fileRef);
-      setPhotoUrl(url);
-
-      // 5) збережемо в Firestore одразу
-      await setDoc(
-        doc(db, "users", user.uid),
-        { photoUrl: url },
-        { merge: true }
-      );
-
-      alert("Фото оновлено ✅");
-    } catch (e) {
-      alert(e?.message || "Помилка завантаження фото");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const pickFromGallery = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return alert("Дай доступ до галереї.");
-
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.9,
-    });
-
-    if (res.canceled) return;
-    const uri = res.assets?.[0]?.uri;
-    if (!uri) return;
-
-    await uploadImageToStorage(uri);
-  };
-
-  const takeFromCamera = async () => {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) return alert("Дай доступ до камери.");
-
-    const res = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.9,
-    });
-
-    if (res.canceled) return;
-    const uri = res.assets?.[0]?.uri;
-    if (!uri) return;
-
-    await uploadImageToStorage(uri);
-  };
-
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
         <Text style={styles.muted}>Завантаження...</Text>
       </View>
     );
   }
 
+  const pickFromGallery = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) return alert("Дай доступ до галереї.");
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+        allowsEditing: true,
+        aspect: [1, 1],
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      const uri = asset?.uri;
+      if (!uri) return alert("Не вдалося отримати фото.");
+
+      const url = await uploadProfilePhotoAsync({
+        uid: user.uid,
+        uri,
+        mimeType: asset?.mimeType,
+      });
+
+      await updateDoc(doc(db, "users", user.uid), { photoUrl: url });
+      setProfile((p) => ({ ...(p || {}), photoUrl: url }));
+    } catch (e) {
+      console.log("upload gallery error:", e);
+      alert(e?.message || String(e));
+    }
+  };
+
+  const takeFromCamera = async () => {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) return alert("Дай доступ до камери.");
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+        allowsEditing: true,
+        aspect: [1, 1],
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      const uri = asset?.uri;
+      if (!uri) return alert("Не вдалося отримати фото.");
+
+      const url = await uploadProfilePhotoAsync({
+        uid: user.uid,
+        uri,
+        mimeType: asset?.mimeType,
+      });
+
+      await updateDoc(doc(db, "users", user.uid), { photoUrl: url });
+      setProfile((p) => ({ ...(p || {}), photoUrl: url }));
+    } catch (e) {
+      console.log("upload camera error:", e);
+      alert(e?.message || String(e));
+    }
+  };
+
+  const saveNickname = async () => {
+    try {
+      await updateDoc(doc(db, "users", user.uid), { nickname: nickname.trim() });
+      alert("Збережено ✅");
+    } catch (e) {
+      alert(e?.message || "Помилка збереження");
+    }
+  };
+
+  const roleLabel = profile?.role === "company" ? "Компанія" : "Особа";
+
   return (
     <View style={styles.container}>
-      <Text style={styles.h1}>Мій профіль</Text>
+      <Text style={styles.title}>Мій профіль</Text>
 
       <View style={styles.card}>
-        <View style={styles.rowTop}>
-          <View style={styles.avatarWrap}>
-            {photoUrl ? (
-              <Image source={{ uri: photoUrl }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarIcon}>👤</Text>
-              </View>
-            )}
-          </View>
+        <View style={styles.avatarWrap}>
+          {profile?.photoUrl ? (
+            <Image source={{ uri: profile.photoUrl }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarPlaceholderText}>👤</Text>
+            </View>
+          )}
 
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>Email</Text>
-            <Text style={styles.value}>{email}</Text>
+            <Text style={styles.value}>{user.email}</Text>
 
             <Text style={[styles.label, { marginTop: 10 }]}>Тип</Text>
-            <Text style={styles.value}>{role === "company" ? "Компанія" : "Особа"}</Text>
+            <Text style={styles.value}>{roleLabel}</Text>
           </View>
         </View>
 
         <View style={styles.btnRow}>
-          <TouchableOpacity style={styles.btnPrimary} onPress={pickFromGallery} disabled={uploading}>
-            <Text style={styles.btnPrimaryText}>{uploading ? "Завантаження..." : "🖼️ Галерея"}</Text>
+          <TouchableOpacity style={styles.btnPrimary} onPress={pickFromGallery}>
+            <Text style={styles.btnPrimaryText}>🖼️ Галерея</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.btnOutline} onPress={takeFromCamera} disabled={uploading}>
-            <Text style={styles.btnOutlineText}>{uploading ? "..." : "📷 Камера"}</Text>
+          <TouchableOpacity style={styles.btnOutline} onPress={takeFromCamera}>
+            <Text style={styles.btnOutlineText}>📷 Камера</Text>
           </TouchableOpacity>
         </View>
-
-        <Text style={styles.section}>Нікнейм</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Напр. Назар"
-          placeholderTextColor={c.muted}
-          value={nickname}
-          onChangeText={setNickname}
-        />
-
-        <TouchableOpacity style={styles.saveBtn} onPress={saveProfile} disabled={uploading}>
-          <Text style={styles.saveBtnText}>Зберегти</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.hint}>
-          Фото зберігається в Firebase Storage, а посилання — в Firestore (users/{user.uid}.photoUrl)
-        </Text>
       </View>
+
+      <Text style={styles.section}>Дані</Text>
+
+      <Text style={styles.label}>Нікнейм</Text>
+      <TextInput
+        style={styles.input}
+        value={nickname}
+        onChangeText={setNickname}
+        placeholder="Введи нікнейм"
+        placeholderTextColor={c.muted}
+      />
+
+      <TouchableOpacity style={styles.saveBtn} onPress={saveNickname}>
+        <Text style={styles.saveBtnText}>Зберегти</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 function makeStyles(c) {
   return StyleSheet.create({
-    container: { flex: 1, backgroundColor: c.bg, padding: 16 },
+    container: { flex: 1, padding: 16, backgroundColor: c.bg },
     center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: c.bg },
-    muted: { color: c.muted, marginTop: 8 },
+    muted: { color: c.muted },
 
-    h1: { color: c.text, fontSize: 22, fontWeight: "900", marginBottom: 12 },
+    title: { fontSize: 22, fontWeight: "900", color: c.text, marginBottom: 12 },
 
     card: {
       backgroundColor: c.surface,
@@ -215,71 +218,51 @@ function makeStyles(c) {
       padding: 14,
     },
 
-    rowTop: { flexDirection: "row", gap: 12, alignItems: "center" },
+    avatarWrap: { flexDirection: "row", gap: 12, alignItems: "center" },
 
-    avatarWrap: {
-      width: 86,
-      height: 86,
+    avatar: { width: 72, height: 72, borderRadius: 18 },
+    avatarPlaceholder: {
+      width: 72,
+      height: 72,
       borderRadius: 18,
-      overflow: "hidden",
+      backgroundColor: c.card,
       borderWidth: 1,
       borderColor: c.border,
-      backgroundColor: c.card,
       alignItems: "center",
       justifyContent: "center",
     },
-    avatar: { width: "100%", height: "100%" },
-    avatarPlaceholder: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
-    avatarIcon: { fontSize: 30 },
+    avatarPlaceholderText: { fontSize: 26 },
 
     label: { color: c.muted, fontWeight: "800", fontSize: 12 },
-    value: { color: c.text, fontWeight: "900", fontSize: 14, marginTop: 2 },
+    value: { color: c.text, fontWeight: "900", fontSize: 14 },
 
-    btnRow: { flexDirection: "row", gap: 10, marginTop: 12 },
-    btnPrimary: {
-      flex: 1,
-      backgroundColor: c.primary,
-      paddingVertical: 12,
-      borderRadius: 14,
-      alignItems: "center",
-    },
+    btnRow: { flexDirection: "row", gap: 10, marginTop: 14 },
+    btnPrimary: { flex: 1, backgroundColor: c.primary, paddingVertical: 12, borderRadius: 14, alignItems: "center" },
     btnPrimaryText: { color: "#fff", fontWeight: "900" },
 
     btnOutline: {
       flex: 1,
-      backgroundColor: c.card,
       borderWidth: 1,
       borderColor: c.border,
+      backgroundColor: c.card,
       paddingVertical: 12,
       borderRadius: 14,
       alignItems: "center",
     },
     btnOutlineText: { color: c.text, fontWeight: "900" },
 
-    section: { marginTop: 14, color: c.text, fontWeight: "900" },
+    section: { marginTop: 16, color: c.text, fontWeight: "900", fontSize: 16, marginBottom: 8 },
 
     input: {
-      marginTop: 8,
       borderWidth: 1,
       borderColor: c.border,
-      backgroundColor: c.card,
+      backgroundColor: c.surface,
       color: c.text,
       borderRadius: 14,
       padding: 12,
-      fontWeight: "800",
     },
 
-    saveBtn: {
-      marginTop: 12,
-      backgroundColor: c.primary,
-      paddingVertical: 12,
-      borderRadius: 14,
-      alignItems: "center",
-    },
+    saveBtn: { marginTop: 12, backgroundColor: c.primary, paddingVertical: 12, borderRadius: 14, alignItems: "center" },
     saveBtnText: { color: "#fff", fontWeight: "900" },
-
-    hint: { marginTop: 10, color: c.muted, fontSize: 12, lineHeight: 16 },
-
-    title: { color: c.text, fontWeight: "900", fontSize: 18 },
   });
 }

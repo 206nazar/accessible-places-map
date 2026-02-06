@@ -60,8 +60,6 @@ export default function EditReviewScreen({ route, navigation }) {
     const authorName = await getAuthorName(uid);
 
     const id = mode === "edit" ? reviewId : uid; 
-    // ✅ робимо reviewId = uid, щоб “1 користувач = 1 відгук на місце”
-    // (так легше редагувати “свій” відгук)
     const ref = doc(db, "places", placeId, "reviews", id);
 
     await setDoc(
