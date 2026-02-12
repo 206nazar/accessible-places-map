@@ -14,6 +14,7 @@ import {
 import { addDoc, collection, serverTimestamp, doc, getDoc } from "firebase/firestore";
 import * as ImagePicker from "expo-image-picker";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import * as Location from "expo-location";
 
 import { auth, db, storage } from "../firebaseConfig";
 import { useTheme } from "../theme/ThemeContext";
@@ -63,10 +64,13 @@ export default function AddPlaceScreen({ navigation, route }) {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [accessInfo, setAccessInfo] = useState("");
+
+  // ✅ ЛОКАЦІЯ (нове)
+  const [address, setAddress] = useState("");
   const [lat, setLat] = useState("50.6199");
   const [lng, setLng] = useState("26.2516");
 
-  // ✅ кілька фото (локальні uri до аплоаду)
+  // ✅ ФОТО
   const [photoUris, setPhotoUris] = useState([]);
   const [uploading, setUploading] = useState(false);
 
@@ -89,12 +93,12 @@ export default function AddPlaceScreen({ navigation, route }) {
     }
   };
 
+  // ---------- ФОТО helpers ----------
   const addUris = (uris) => {
-    // без дублікатів
     setPhotoUris((prev) => {
       const set = new Set(prev);
       for (const u of uris) set.add(u);
-      return Array.from(set).slice(0, 8); // ліміт 8 фото, щоб не було важко
+      return Array.from(set).slice(0, 8);
     });
   };
 
@@ -108,7 +112,7 @@ export default function AddPlaceScreen({ navigation, route }) {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
         quality: 0.85,
-        allowsEditing: false, // для мульти-фото краще false
+        allowsEditing: false,
         allowsMultipleSelection: true,
         selectionLimit: 8,
       });
@@ -149,6 +153,40 @@ export default function AddPlaceScreen({ navigation, route }) {
     }
   };
 
+  // ---------- ЛОКАЦІЯ helpers ----------
+  const geocodeByAddress = async () => {
+    if (!address.trim()) return alert("Введи адресу.");
+
+    try {
+      // інколи допомагає, якщо є дозвіл
+      await Location.requestForegroundPermissionsAsync();
+
+      const res = await Location.geocodeAsync(address.trim());
+      if (!res || res.length === 0) return alert("Не знайшов адресу. Спробуй точніше.");
+
+      setLat(String(res[0].latitude));
+      setLng(String(res[0].longitude));
+      alert("Знайдено ✅ Координати підставлено.");
+    } catch (e) {
+      console.log("geocode error:", e);
+      alert(e?.message || "Помилка пошуку адреси");
+    }
+  };
+
+  const openPickOnMap = () => {
+    navigation.navigate("PickLocation", {
+      initial: {
+        latitude: Number(lat) || 50.6199,
+        longitude: Number(lng) || 26.2516,
+      },
+      onPick: (coords) => {
+        setLat(String(coords.latitude));
+        setLng(String(coords.longitude));
+      },
+    });
+  };
+
+  // ---------- SAVE ----------
   const save = async () => {
     if (!title.trim()) return alert("Введи назву місця.");
 
@@ -163,7 +201,7 @@ export default function AddPlaceScreen({ navigation, route }) {
     try {
       const ownerName = await getOwnerName(uid);
 
-      // ✅ аплоадимо всі фото (якщо є)
+      // ✅ аплоадимо фото (якщо є)
       const placeTempId = `p_${Date.now()}`;
       const photoUrls = [];
       for (let i = 0; i < photoUris.length; i++) {
@@ -176,7 +214,6 @@ export default function AddPlaceScreen({ navigation, route }) {
         photoUrls.push(url);
       }
 
-      // для сумісності зі старим UI можна ще зберегти "photoUrl" як перше фото
       const photoUrl = photoUrls[0] || "";
 
       await addDoc(collection(db, "places"), {
@@ -189,9 +226,11 @@ export default function AddPlaceScreen({ navigation, route }) {
         description: desc.trim(),
         accessInfo: accessInfo.trim(),
 
-        // ✅ нове поле
+        // ✅ адреса
+        address: address.trim(),
+
+        // ✅ фото
         photoUrls,
-        // ✅ старе поле (не обов’язково, але корисно якщо десь ще використовується)
         photoUrl,
 
         latitude,
@@ -257,6 +296,31 @@ export default function AddPlaceScreen({ navigation, route }) {
           multiline
         />
 
+        {/* ✅ ЛОКАЦІЯ */}
+        <Text style={styles.section}>Локація</Text>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Адреса (наприклад: Рівне, Соборна 12)"
+          placeholderTextColor={c.muted}
+          value={address}
+          onChangeText={setAddress}
+        />
+
+        <View style={styles.locRow}>
+          <TouchableOpacity style={styles.locBtnPrimary} onPress={geocodeByAddress} activeOpacity={0.9}>
+            <Text style={styles.locBtnPrimaryText}>🔎 Знайти по адресі</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.locBtnOutline} onPress={openPickOnMap} activeOpacity={0.9}>
+            <Text style={styles.locBtnOutlineText}>🗺️ Вибрати на карті</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.hintSmall}>
+          Координати: {Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}
+        </Text>
+
         {/* ✅ Фото */}
         <Text style={styles.section}>Фото (до 8)</Text>
 
@@ -287,24 +351,6 @@ export default function AddPlaceScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.section}>Координати</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Latitude"
-          placeholderTextColor={c.muted}
-          value={lat}
-          onChangeText={setLat}
-          keyboardType="numeric"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Longitude"
-          placeholderTextColor={c.muted}
-          value={lng}
-          onChangeText={setLng}
-          keyboardType="numeric"
-        />
-
         <Text style={styles.section}>Норми (базові)</Text>
         <Row label="Є пандус" value={ramp} onChange={setRamp} styles={styles} />
         <Row label="Широкі двері (≥ 90 см)" value={wideDoor} onChange={setWideDoor} styles={styles} />
@@ -314,9 +360,7 @@ export default function AddPlaceScreen({ navigation, route }) {
         <Row label="Доступний туалет" value={accessibleToilet} onChange={setAccessibleToilet} styles={styles} />
         <Row label="Є ліфт" value={elevator} onChange={setElevator} styles={styles} />
 
-        <Text style={styles.hint}>
-          Відповідає базовим нормам: {meetsBasicNorms ? "✅ так" : "❌ ні"}
-        </Text>
+        <Text style={styles.hint}>Відповідає базовим нормам: {meetsBasicNorms ? "✅ так" : "❌ ні"}</Text>
 
         <TouchableOpacity style={styles.btnSave} onPress={save} activeOpacity={0.9} disabled={uploading}>
           {uploading ? (
@@ -404,7 +448,22 @@ function makeStyles(c) {
     selectText: { color: c.text, fontWeight: "700", flex: 1, paddingRight: 10 },
     chev: { color: c.muted, fontSize: 16, fontWeight: "900" },
 
-    hintSmall: { color: c.muted, marginBottom: 10 },
+    // ✅ location row
+    locRow: { flexDirection: "row", gap: 10, marginBottom: 6 },
+    locBtnPrimary: { flex: 1, backgroundColor: c.primary, paddingVertical: 12, borderRadius: 14, alignItems: "center" },
+    locBtnPrimaryText: { color: "#fff", fontWeight: "900" },
+    locBtnOutline: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.card,
+      paddingVertical: 12,
+      borderRadius: 14,
+      alignItems: "center",
+    },
+    locBtnOutlineText: { color: c.text, fontWeight: "900" },
+
+    hintSmall: { color: c.muted, marginBottom: 10, fontWeight: "700" },
 
     // ✅ thumbnails
     thumbRow: { flexDirection: "row", gap: 10, paddingRight: 12 },

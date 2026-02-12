@@ -15,6 +15,7 @@ import { db } from "../firebaseConfig";
 import MapScreen, { fetchPlaces } from "./MapScreen";
 import SideMenu from "../components/SideMenu";
 import { useTheme } from "../theme/ThemeContext";
+import { useUser } from "../context/UserContext";
 
 const CATEGORIES = [
   { key: "all", label: "📍 Усі" },
@@ -29,10 +30,12 @@ const CATEGORIES = [
   { key: "transport", label: "🚌 Транспорт" },
 ];
 
-export default function HomeScreen({ navigation, user, route }) {
+export default function HomeScreen({ navigation, user }) {
   const { theme } = useTheme();
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
+
+  const { userName } = useUser();
 
   const [role, setRole] = useState(null);
   const [places, setPlaces] = useState([]);
@@ -40,10 +43,6 @@ export default function HomeScreen({ navigation, user, route }) {
 
   const [activeCategory, setActiveCategory] = useState("all");
   const [catsOpen, setCatsOpen] = useState(false);
-
-  // ✅ маршрут на карті
-  const [routeToPlaceId, setRouteToPlaceId] = useState(null);
-  const [routeMode, setRouteMode] = useState("WALKING"); // WALKING | DRIVING
 
   const loadRole = async () => {
     if (!user) return setRole(null);
@@ -63,20 +62,6 @@ export default function HomeScreen({ navigation, user, route }) {
   useEffect(() => {
     loadPlaces().catch((e) => alert(e.message));
   }, []);
-
-  // ✅ приймаємо параметри маршруту з PlaceDetails
-  useEffect(() => {
-    const pid = route?.params?.routeToPlaceId;
-    const mode = route?.params?.routeMode;
-
-    if (pid) setRouteToPlaceId(pid);
-    if (mode) setRouteMode(mode);
-
-    // щоб не застосовувалось повторно при кожному ререндері
-    if (pid || mode) {
-      navigation.setParams({ routeToPlaceId: undefined, routeMode: undefined });
-    }
-  }, [route?.params?.routeToPlaceId, route?.params?.routeMode]);
 
   const canAdd = !!user && role === "company";
 
@@ -102,7 +87,10 @@ export default function HomeScreen({ navigation, user, route }) {
       />
 
       <View style={styles.topBar}>
-        <Text style={styles.appTitle}>Accessible Places</Text>
+        <View>
+          <Text style={styles.appTitle}>Accessible Places</Text>
+          {userName ? <Text style={styles.hello}>Привіт, {userName} 👋</Text> : null}
+        </View>
 
         <TouchableOpacity style={styles.burgerBtn} onPress={() => setMenuOpen(true)}>
           <Text style={styles.burgerText}>☰</Text>
@@ -121,21 +109,6 @@ export default function HomeScreen({ navigation, user, route }) {
         </TouchableOpacity>
       </View>
 
-      {/* ✅ якщо є маршрут — покажемо зверху кнопку скинути */}
-      {routeToPlaceId ? (
-        <View style={styles.routeRow}>
-          <Text style={styles.routeText}>🧭 Маршрут увімкнено ({routeMode === "DRIVING" ? "машина" : "пішки"})</Text>
-
-          <TouchableOpacity
-            style={styles.routeClearBtn}
-            onPress={() => setRouteToPlaceId(null)}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.routeClearText}>Скинути</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
       {canAdd ? (
         <View style={styles.actionsRow}>
           <TouchableOpacity
@@ -148,12 +121,7 @@ export default function HomeScreen({ navigation, user, route }) {
       ) : null}
 
       <View style={{ flex: 1 }}>
-        <MapScreen
-          navigation={navigation}
-          places={filteredPlaces}
-          routeToPlaceId={routeToPlaceId}
-          routeMode={routeMode}
-        />
+        <MapScreen navigation={navigation} places={filteredPlaces} />
       </View>
 
       <View style={styles.footer}>
@@ -214,6 +182,7 @@ function makeStyles(c) {
       borderBottomColor: c.border,
     },
     appTitle: { fontSize: 18, fontWeight: "900", color: c.text },
+    hello: { marginTop: 2, color: c.muted, fontWeight: "800", fontSize: 12 },
 
     burgerBtn: {
       width: 44,
@@ -259,29 +228,6 @@ function makeStyles(c) {
       justifyContent: "center",
     },
     catBtnText: { color: c.text, fontWeight: "900" },
-
-    // ✅ плашка маршруту
-    routeRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      backgroundColor: c.surface,
-      borderBottomWidth: 1,
-      borderBottomColor: c.border,
-      gap: 10,
-    },
-    routeText: { flex: 1, color: c.text, fontWeight: "800" },
-    routeClearBtn: {
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      borderRadius: 14,
-      backgroundColor: c.card,
-      borderWidth: 1,
-      borderColor: c.border,
-    },
-    routeClearText: { color: c.text, fontWeight: "900" },
 
     actionsRow: {
       paddingHorizontal: 14,

@@ -5,40 +5,33 @@ import { auth, db, storage } from "../firebaseConfig";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useTheme } from "../theme/ThemeContext";
+import { useUser } from "../context/UserContext";
 
 async function uriToBlob(uri) {
   const res = await fetch(uri);
-  return await res.blob();
+  const blob = await res.blob();
+  return blob;
 }
 
-function extFromMime(mime) {
-  if (!mime) return "jpg";
-  if (mime.includes("png")) return "png";
-  if (mime.includes("webp")) return "webp";
-  return "jpg";
-}
-
-async function uploadProfilePhotoAsync({ uid, uri, mimeType }) {
-  const ext = extFromMime(mimeType);
-  const path = `users/${uid}/avatar_${Date.now()}.${ext}`;
+async function uploadProfilePhotoAsync({ uid, uri }) {
+  const path = `users/${uid}/avatar.jpg`;
   const storageRef = ref(storage, path);
 
   const blob = await uriToBlob(uri);
-
-  await uploadBytes(storageRef, blob, {
-    contentType: mimeType || "image/jpeg",
-    cacheControl: "public,max-age=3600",
-  });
+  await uploadBytes(storageRef, blob, { contentType: "image/jpeg" });
 
   if (blob && typeof blob.close === "function") blob.close();
 
-  return await getDownloadURL(storageRef);
+  const url = await getDownloadURL(storageRef);
+  return url;
 }
 
 export default function MyProfileScreen() {
   const { theme } = useTheme();
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
+
+  const { setUserName } = useUser();
 
   const user = auth.currentUser;
 
@@ -50,8 +43,13 @@ export default function MyProfileScreen() {
     if (!user) return;
     const snap = await getDoc(doc(db, "users", user.uid));
     const data = snap.exists() ? snap.data() : null;
+
     setProfile(data);
     setNickname(data?.nickname || "");
+
+    // ✅ у контекст (щоб HomeScreen одразу показував)
+    setUserName(data?.nickname || data?.companyName || "");
+
     setLoading(false);
   };
 
@@ -81,7 +79,7 @@ export default function MyProfileScreen() {
       if (!perm.granted) return alert("Дай доступ до галереї.");
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
+        mediaTypes: ImagePicker.MediaType.Images,
         quality: 0.8,
         allowsEditing: true,
         aspect: [1, 1],
@@ -89,15 +87,10 @@ export default function MyProfileScreen() {
 
       if (result.canceled) return;
 
-      const asset = result.assets?.[0];
-      const uri = asset?.uri;
+      const uri = result.assets?.[0]?.uri;
       if (!uri) return alert("Не вдалося отримати фото.");
 
-      const url = await uploadProfilePhotoAsync({
-        uid: user.uid,
-        uri,
-        mimeType: asset?.mimeType,
-      });
+      const url = await uploadProfilePhotoAsync({ uid: user.uid, uri });
 
       await updateDoc(doc(db, "users", user.uid), { photoUrl: url });
       setProfile((p) => ({ ...(p || {}), photoUrl: url }));
@@ -113,7 +106,7 @@ export default function MyProfileScreen() {
       if (!perm.granted) return alert("Дай доступ до камери.");
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ["images"],
+        mediaTypes: ImagePicker.MediaType.Images,
         quality: 0.8,
         allowsEditing: true,
         aspect: [1, 1],
@@ -121,15 +114,10 @@ export default function MyProfileScreen() {
 
       if (result.canceled) return;
 
-      const asset = result.assets?.[0];
-      const uri = asset?.uri;
+      const uri = result.assets?.[0]?.uri;
       if (!uri) return alert("Не вдалося отримати фото.");
 
-      const url = await uploadProfilePhotoAsync({
-        uid: user.uid,
-        uri,
-        mimeType: asset?.mimeType,
-      });
+      const url = await uploadProfilePhotoAsync({ uid: user.uid, uri });
 
       await updateDoc(doc(db, "users", user.uid), { photoUrl: url });
       setProfile((p) => ({ ...(p || {}), photoUrl: url }));
@@ -140,8 +128,15 @@ export default function MyProfileScreen() {
   };
 
   const saveNickname = async () => {
+    const name = nickname.trim();
+    if (!name) return alert("Введи нікнейм.");
+
     try {
-      await updateDoc(doc(db, "users", user.uid), { nickname: nickname.trim() });
+      await updateDoc(doc(db, "users", user.uid), { nickname: name });
+
+      // ✅ важливо: одразу в контекст
+      setUserName(name);
+
       alert("Збережено ✅");
     } catch (e) {
       alert(e?.message || "Помилка збереження");

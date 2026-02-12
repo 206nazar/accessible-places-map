@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 
-import { auth } from "./firebaseConfig";
+import { auth, db } from "./firebaseConfig";
 
 import HomeScreen from "./screens/HomeScreen";
 import CompanyHomeScreen from "./screens/CompanyHomeScreen";
@@ -17,12 +18,14 @@ import EditPlaceScreen from "./screens/EditPlaceScreen";
 
 import MyProfileScreen from "./screens/MyProfileScreen";
 import MyReviewsScreen from "./screens/MyReviewsScreen";
-import CompanyReviewsScreen from "./screens/CompanyReviewsScreen";
-import ReviewEditScreen from "./screens/ReviewEditScreen";
-import RouteScreen from "./screens/RouteScreen";
 
+// ✅ NEW
+import AdminHomeScreen from "./screens/AdminHomeScreen";
+import AdminPlacesScreen from "./screens/AdminPlacesScreen";
+import AdminReviewsScreen from "./screens/AdminReviewsScreen";
 
 import { ThemeProvider, useTheme } from "./theme/ThemeContext";
+import { UserProvider, useUser } from "./context/UserContext";
 
 const Stack = createNativeStackNavigator();
 
@@ -31,14 +34,38 @@ function AppInner() {
   const [readyAuth, setReadyAuth] = useState(false);
 
   const { theme, ready: readyTheme } = useTheme();
+  const { setUserName } = useUser();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u || null);
+
+      if (!u) {
+        setUserName("");
+        setReadyAuth(true);
+        return;
+      }
+
+      try {
+        const snap = await getDoc(doc(db, "users", u.uid));
+        const data = snap.exists() ? snap.data() : null;
+
+        const name =
+          data?.nickname ||
+          data?.companyName ||
+          u.displayName ||
+          (u.email ? u.email.split("@")[0] : "");
+
+        setUserName(name || "");
+      } catch {
+        setUserName(u.email ? u.email.split("@")[0] : "");
+      }
+
       setReadyAuth(true);
     });
+
     return unsub;
-  }, []);
+  }, [setUserName]);
 
   if (!readyAuth || !readyTheme) return null;
 
@@ -60,8 +87,15 @@ function AppInner() {
           {(props) => <CompanyHomeScreen {...props} user={user} />}
         </Stack.Screen>
 
-        <Stack.Screen name="CompanyReviews" options={{ title: "Відгуки про мої точки" }}>
-          {(props) => <CompanyReviewsScreen {...props} user={user} />}
+        {/* ✅ Admin */}
+        <Stack.Screen name="AdminHome" options={{ title: "Адмін" }}>
+          {(props) => <AdminHomeScreen {...props} user={user} />}
+        </Stack.Screen>
+        <Stack.Screen name="AdminPlaces" options={{ title: "Адмін: точки" }}>
+          {(props) => <AdminPlacesScreen {...props} user={user} />}
+        </Stack.Screen>
+        <Stack.Screen name="AdminReviews" options={{ title: "Адмін: відгуки" }}>
+          {(props) => <AdminReviewsScreen {...props} user={user} />}
         </Stack.Screen>
 
         <Stack.Screen name="Account" options={{ title: "Акаунт" }}>
@@ -76,28 +110,12 @@ function AppInner() {
           {(props) => <MyReviewsScreen {...props} user={user} />}
         </Stack.Screen>
 
-        <Stack.Screen name="ReviewEdit" options={{ title: "Відгук" }}>
-          {(props) => <ReviewEditScreen {...props} user={user} />}
-        </Stack.Screen>
-
-        <Stack.Screen name="Login">
-          {(props) => <LoginScreen {...props} user={user} />}
-        </Stack.Screen>
-
-        <Stack.Screen name="Register">
-          {(props) => <RegisterScreen {...props} user={user} />}
-        </Stack.Screen>
-
-        <Stack.Screen name="RoleSelect">
-          {(props) => <RoleSelectScreen {...props} user={user} />}
-        </Stack.Screen>
+        <Stack.Screen name="Login" component={LoginScreen} options={{ title: "Вхід" }} />
+        <Stack.Screen name="Register" component={RegisterScreen} options={{ title: "Реєстрація" }} />
+        <Stack.Screen name="RoleSelect" component={RoleSelectScreen} options={{ title: "Хто ви?" }} />
 
         <Stack.Screen name="PlaceDetails" options={{ title: "Місце" }}>
           {(props) => <PlaceDetailsScreen {...props} user={user} />}
-        </Stack.Screen>
-
-        <Stack.Screen name="Route" options={{ title: "Маршрут" }}>
-          {(props) => <RouteScreen {...props} />}
         </Stack.Screen>
 
         <Stack.Screen name="AddPlace" component={AddPlaceScreen} options={{ title: "Додати місце" }} />
@@ -110,7 +128,9 @@ function AppInner() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppInner />
+      <UserProvider>
+        <AppInner />
+      </UserProvider>
     </ThemeProvider>
   );
 }

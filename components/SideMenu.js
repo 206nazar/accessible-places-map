@@ -22,6 +22,7 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
       alert(e.message);
     }
   };
+  const isAdmin = !!user && role === "admin";
 
   const isCompany = !!user && role === "company";
 
@@ -34,6 +35,11 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
           <Text style={styles.title}>Меню</Text>
 
           <Text style={styles.section}>Акаунт</Text>
+          {isAdmin ? (
+            <TouchableOpacity style={styles.item} onPress={() => go("AdminHome")}>
+              <Text style={styles.itemText}>🛡️ Адмін панель</Text>
+            </TouchableOpacity>
+          ) : null}
 
           {isCompany ? (
             <>

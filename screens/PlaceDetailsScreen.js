@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+} from "react-native";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import { useTheme } from "../theme/ThemeContext";
@@ -10,16 +18,21 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
   const styles = useMemo(() => makeStyles(c), [c]);
 
   const { placeId } = route.params;
+
   const [place, setPlace] = useState(null);
   const [reviews, setReviews] = useState([]);
-
   const [routeModal, setRouteModal] = useState(false);
 
+  // кеш профілів авторів: { uid: { name, photoUrl } }
+  const [profiles, setProfiles] = useState({});
+
   const load = async () => {
+    // place
     const snap = await getDoc(doc(db, "places", placeId));
     const placeData = snap.exists() ? { id: snap.id, ...snap.data() } : null;
     setPlace(placeData);
 
+    // reviews
     const rq = query(collection(db, "reviews"), where("placeId", "==", placeId));
     const rs = await getDocs(rq);
     const items = rs.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -31,10 +44,53 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
     });
 
     setReviews(items);
+
+    // ✅ підтягуємо профілі авторів (nickname + photoUrl)
+    // беремо authorUid або userUid (на випадок різних назв поля)
+    const uids = Array.from(
+      new Set(
+        items
+          .map((r) => r.authorUid || r.userUid || r.uid)
+          .filter(Boolean)
+      )
+    );
+
+    // завантажимо тільки ті, яких ще нема в кеші
+    const missing = uids.filter((uid) => !profiles[uid]);
+    if (missing.length) {
+      const entries = await Promise.all(
+        missing.map(async (uid) => {
+          try {
+            const us = await getDoc(doc(db, "users", uid));
+            const data = us.exists() ? us.data() : null;
+
+            const name =
+              data?.nickname ||
+              data?.companyName ||
+              data?.displayName ||
+              data?.name ||
+              "Користувач";
+
+            const photoUrl = data?.photoUrl || "";
+
+            return [uid, { name, photoUrl }];
+          } catch {
+            return [uid, { name: "Користувач", photoUrl: "" }];
+          }
+        })
+      );
+
+      setProfiles((prev) => {
+        const next = { ...prev };
+        for (const [uid, info] of entries) next[uid] = info;
+        return next;
+      });
+    }
   };
 
   useEffect(() => {
     load().catch((e) => alert(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placeId]);
 
   if (!place) {
@@ -47,18 +103,61 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
 
   const startRoute = (mode) => {
     setRouteModal(false);
-
-    // ✅ повертаємось на Home і кажемо MapScreen малювати маршрут
     navigation.navigate("Home", {
       routeToPlaceId: place.id,
       routeMode: mode, // "WALKING" | "DRIVING"
     });
   };
 
+  // ✅ фото для показу: спочатку photoUrls[], якщо нема — photoUrl
+  const photos = Array.isArray(place.photoUrls) && place.photoUrls.length
+    ? place.photoUrls
+    : (place.photoUrl ? [place.photoUrl] : []);
+
+  const ReviewHeader = ({ r }) => {
+    const uid = r.authorUid || r.userUid || r.uid;
+    const info = uid ? profiles[uid] : null;
+
+    const name =
+      info?.name ||
+      r.authorName ||
+      r.authorEmail ||
+      r.userEmail ||
+      "Користувач";
+
+    const avatar = info?.photoUrl || r.authorPhotoUrl || "";
+
+    return (
+      <View style={styles.reviewHead}>
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={styles.avatar} />
+        ) : (
+          <View style={styles.avatarPh}>
+            <Text style={styles.avatarPhText}>👤</Text>
+          </View>
+        )}
+
+        <View style={{ flex: 1 }}>
+          <Text style={styles.reviewTitle} numberOfLines={1}>
+            {name}
+          </Text>
+          <Text style={styles.reviewMeta}>⭐ {r.rating || 0}</Text>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <>
       <ScrollView style={styles.container}>
-        {place.photoUrl ? <Image source={{ uri: place.photoUrl }} style={styles.photo} /> : null}
+        {/* ✅ Фото-карусель */}
+        {photos.length ? (
+          <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
+            {photos.map((url, idx) => (
+              <Image key={`${url}_${idx}`} source={{ uri: url }} style={styles.photo} />
+            ))}
+          </ScrollView>
+        ) : null}
 
         <Text style={styles.title}>{place.title}</Text>
         <Text style={styles.sub}>Додав: {place.ownerName || place.ownerUid || "—"}</Text>
@@ -95,9 +194,8 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
         ) : (
           reviews.map((r) => (
             <View key={r.id} style={styles.reviewCard}>
-              <Text style={styles.reviewTitle}>
-                ⭐ {r.rating || 0} — {r.authorName || r.authorEmail || "Користувач"}
-              </Text>
+              <ReviewHeader r={r} />
+
               <Text style={styles.reviewText}>{r.text || "—"}</Text>
 
               {r.reply?.text ? (
@@ -152,7 +250,9 @@ function makeStyles(c) {
     center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: c.bg },
     muted: { color: c.muted, fontWeight: "700", paddingHorizontal: 14, marginTop: 10 },
 
-    photo: { width: "100%", height: 220 },
+    // ✅ фото (для paging)
+    photo: { width: 420, height: 220 }, // якщо хочеш 100% ширину — скажи, підлаштую під Dimensions
+
     title: { fontSize: 22, fontWeight: "bold", marginTop: 12, paddingHorizontal: 14, color: c.text },
     sub: { color: c.muted, marginTop: 4, paddingHorizontal: 14 },
 
@@ -173,7 +273,26 @@ function makeStyles(c) {
       borderRadius: 14,
       padding: 12,
     },
-    reviewTitle: { color: c.text, fontWeight: "800" },
+
+    // ✅ header in review
+    reviewHead: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
+
+    avatar: { width: 40, height: 40, borderRadius: 12 },
+    avatarPh: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarPhText: { fontSize: 18 },
+
+    reviewTitle: { color: c.text, fontWeight: "900" },
+    reviewMeta: { color: c.muted, fontWeight: "800", marginTop: 2 },
+
     reviewText: { color: c.text, marginTop: 6 },
 
     replyBox: {
