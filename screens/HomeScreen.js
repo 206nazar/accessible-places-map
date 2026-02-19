@@ -9,9 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { doc, getDoc } from "firebase/firestore";
 
-import { db } from "../firebaseConfig";
 import MapScreen, { fetchPlaces } from "./MapScreen";
 import SideMenu from "../components/SideMenu";
 import { useTheme } from "../theme/ThemeContext";
@@ -30,24 +28,32 @@ const CATEGORIES = [
   { key: "transport", label: "🚌 Транспорт" },
 ];
 
-export default function HomeScreen({ navigation, user }) {
+export default function HomeScreen({ navigation, route }) {
   const { theme } = useTheme();
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
 
-  const { userName } = useUser();
+  // ✅ беремо з контексту (тепер тут НЕ треба читати Firestore)
+  const { user, role, userName, ready } = useUser();
 
-  const [role, setRole] = useState(null);
   const [places, setPlaces] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const [activeCategory, setActiveCategory] = useState("all");
   const [catsOpen, setCatsOpen] = useState(false);
 
-  const loadRole = async () => {
-    if (!user) return setRole(null);
-    const snap = await getDoc(doc(db, "users", user.uid));
-    setRole(snap.exists() ? snap.data().role : null);
+  // ✅ маршрут з PlaceDetails -> Home
+  const routeToPlaceId = route?.params?.routeToPlaceId || null;
+  const routeMode = route?.params?.routeMode || null;
+
+  const cancelRoute = () => {
+    navigation.setParams({ routeToPlaceId: null, routeMode: null });
+  };
+
+  // ✅ фокус на точку (CompanyHome -> Home)
+  const focusPlaceId = route?.params?.focusPlaceId || null;
+  const cancelFocus = () => {
+    navigation.setParams({ focusPlaceId: null });
   };
 
   const loadPlaces = async () => {
@@ -55,13 +61,18 @@ export default function HomeScreen({ navigation, user }) {
     setPlaces(data);
   };
 
-  useEffect(() => {
-    loadRole().catch(() => {});
-  }, [user]);
-
+  // ✅ первинне завантаження
   useEffect(() => {
     loadPlaces().catch((e) => alert(e.message));
   }, []);
+
+  // ✅ щоб після Add/Edit/Delete точки одразу оновлювалось при поверненні на Home
+  useEffect(() => {
+    const unsub = navigation.addListener("focus", () => {
+      loadPlaces().catch(() => {});
+    });
+    return unsub;
+  }, [navigation]);
 
   const canAdd = !!user && role === "company";
 
@@ -73,6 +84,10 @@ export default function HomeScreen({ navigation, user }) {
   const activeLabel = useMemo(() => {
     return CATEGORIES.find((x) => x.key === activeCategory)?.label || "📍 Усі";
   }, [activeCategory]);
+
+  if (!ready) {
+    return <View style={{ flex: 1, backgroundColor: c.bg }} />;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -121,7 +136,16 @@ export default function HomeScreen({ navigation, user }) {
       ) : null}
 
       <View style={{ flex: 1 }}>
-        <MapScreen navigation={navigation} places={filteredPlaces} />
+        <MapScreen
+          navigation={navigation}
+          places={filteredPlaces}
+          allPlaces={places} // ✅ важливо: маршрут/фокус шукаємо по повному списку
+          routeToPlaceId={routeToPlaceId}
+          routeMode={routeMode}
+          onCancelRoute={cancelRoute}
+          focusPlaceId={focusPlaceId}
+          onFocusDone={cancelFocus}
+        />
       </View>
 
       <View style={styles.footer}>
@@ -253,7 +277,6 @@ function makeStyles(c) {
     },
     footerText: { textAlign: "center", color: c.muted, fontSize: 12 },
 
-    // modal categories
     catOverlay: { flex: 1, justifyContent: "center", paddingHorizontal: 18 },
     catBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: c.overlay },
 

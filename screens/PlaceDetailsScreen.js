@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,10 +7,13 @@ import {
   ScrollView,
   TouchableOpacity,
   Modal,
+  Dimensions,
 } from "react-native";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import { useTheme } from "../theme/ThemeContext";
+
+const { width: SCREEN_W } = Dimensions.get("window");
 
 export default function PlaceDetailsScreen({ route, navigation, user }) {
   const { theme } = useTheme();
@@ -23,8 +26,9 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
   const [reviews, setReviews] = useState([]);
   const [routeModal, setRouteModal] = useState(false);
 
-  // кеш профілів авторів: { uid: { name, photoUrl } }
+  // state для ререндеру + ref для стабільного кешу
   const [profiles, setProfiles] = useState({});
+  const profilesRef = useRef({});
 
   const load = async () => {
     // place
@@ -46,17 +50,13 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
     setReviews(items);
 
     // ✅ підтягуємо профілі авторів (nickname + photoUrl)
-    // беремо authorUid або userUid (на випадок різних назв поля)
     const uids = Array.from(
-      new Set(
-        items
-          .map((r) => r.authorUid || r.userUid || r.uid)
-          .filter(Boolean)
-      )
+      new Set(items.map((r) => r.authorUid || r.userUid || r.uid).filter(Boolean))
     );
 
-    // завантажимо тільки ті, яких ще нема в кеші
-    const missing = uids.filter((uid) => !profiles[uid]);
+    const cache = profilesRef.current || {};
+    const missing = uids.filter((uid) => !cache[uid]);
+
     if (missing.length) {
       const entries = await Promise.all(
         missing.map(async (uid) => {
@@ -80,11 +80,16 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
         })
       );
 
-      setProfiles((prev) => {
-        const next = { ...prev };
-        for (const [uid, info] of entries) next[uid] = info;
-        return next;
-      });
+      const next = { ...cache };
+      for (const [uid, info] of entries) next[uid] = info;
+
+      profilesRef.current = next;
+      setProfiles(next);
+    } else {
+      // синхронізація state (на випадок якщо state був пустий)
+      if (Object.keys(profiles).length === 0 && Object.keys(cache).length) {
+        setProfiles(cache);
+      }
     }
   };
 
@@ -110,9 +115,12 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
   };
 
   // ✅ фото для показу: спочатку photoUrls[], якщо нема — photoUrl
-  const photos = Array.isArray(place.photoUrls) && place.photoUrls.length
-    ? place.photoUrls
-    : (place.photoUrl ? [place.photoUrl] : []);
+  const photos =
+    Array.isArray(place.photoUrls) && place.photoUrls.length
+      ? place.photoUrls
+      : place.photoUrl
+      ? [place.photoUrl]
+      : [];
 
   const ReviewHeader = ({ r }) => {
     const uid = r.authorUid || r.userUid || r.uid;
@@ -150,7 +158,7 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
   return (
     <>
       <ScrollView style={styles.container}>
-        {/* ✅ Фото-карусель */}
+        {/* ✅ Фото-карусель (на всю ширину) */}
         {photos.length ? (
           <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
             {photos.map((url, idx) => (
@@ -195,7 +203,6 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
           reviews.map((r) => (
             <View key={r.id} style={styles.reviewCard}>
               <ReviewHeader r={r} />
-
               <Text style={styles.reviewText}>{r.text || "—"}</Text>
 
               {r.reply?.text ? (
@@ -250,8 +257,8 @@ function makeStyles(c) {
     center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: c.bg },
     muted: { color: c.muted, fontWeight: "700", paddingHorizontal: 14, marginTop: 10 },
 
-    // ✅ фото (для paging)
-    photo: { width: 420, height: 220 }, // якщо хочеш 100% ширину — скажи, підлаштую під Dimensions
+    // ✅ фото на всю ширину екрану
+    photo: { width: SCREEN_W, height: 220 },
 
     title: { fontSize: 22, fontWeight: "bold", marginTop: 12, paddingHorizontal: 14, color: c.text },
     sub: { color: c.muted, marginTop: 4, paddingHorizontal: 14 },
@@ -274,9 +281,7 @@ function makeStyles(c) {
       padding: 12,
     },
 
-    // ✅ header in review
     reviewHead: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
-
     avatar: { width: 40, height: 40, borderRadius: 12 },
     avatarPh: {
       width: 40,
@@ -306,7 +311,6 @@ function makeStyles(c) {
     replyTitle: { color: c.muted, fontWeight: "800" },
     replyText: { color: c.text, marginTop: 6 },
 
-    // modal
     modalOverlay: { flex: 1, justifyContent: "center", padding: 18 },
     modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: c.overlay },
     modalCard: {

@@ -1,7 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, TextInput, ScrollView, Image } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  FlatList,
+  TextInput,
+  ScrollView,
+  Image,
+  Modal,
+} from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { collection, doc, getDocs, query, updateDoc, where, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
+  serverTimestamp,
+} from "firebase/firestore";
 import { auth, db, storage } from "../firebaseConfig";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useTheme } from "../theme/ThemeContext";
@@ -28,6 +47,10 @@ async function uploadImagesAsync({ folderPath, uris }) {
   return out;
 }
 
+function pickAuthorUid(r) {
+  return r.authorUid || r.userUid || r.ownerUid || r.uid || null;
+}
+
 export default function CompanyReviewsScreen({ navigation, user }) {
   const { theme } = useTheme();
   const c = theme.colors;
@@ -36,13 +59,32 @@ export default function CompanyReviewsScreen({ navigation, user }) {
   const me = user || auth.currentUser;
 
   const [loading, setLoading] = useState(true);
+
+  // ✅ точки компанії
+  const [myPlaces, setMyPlaces] = useState([]); // [{id,title,photoUrl,photoUrls}]
+  const [placeModal, setPlaceModal] = useState(false);
+  const [selectedPlaceId, setSelectedPlaceId] = useState("all"); // "all" або конкретний id
+
+  // ✅ відгуки
   const [items, setItems] = useState([]);
 
+  // ✅ reply state
   const [replyDraft, setReplyDraft] = useState({}); // { reviewId: text }
   const [replyUris, setReplyUris] = useState({}); // { reviewId: [uri] }
   const [sending, setSending] = useState({}); // { reviewId: bool }
 
-  const load = async () => {
+  const loadMyPlaces = async () => {
+    if (!me) return [];
+    const pq = query(collection(db, "places"), where("ownerUid", "==", me.uid));
+    const ps = await getDocs(pq);
+    const places = ps.docs.map((d) => ({ id: d.id, ...d.data() }));
+    // щоб в селекті було красиво (по назві)
+    places.sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+    setMyPlaces(places);
+    return places;
+  };
+
+  const loadReviews = async (placesList) => {
     if (!me) {
       setItems([]);
       setLoading(false);
@@ -51,18 +93,26 @@ export default function CompanyReviewsScreen({ navigation, user }) {
 
     setLoading(true);
 
-    const pq = query(collection(db, "places"), where("ownerUid", "==", me.uid));
-    const ps = await getDocs(pq);
-    const placeIds = ps.docs.map((d) => d.id);
+    const places = placesList || myPlaces;
+    const allowedPlaceIds = places.map((p) => p.id);
 
-    if (placeIds.length === 0) {
+    // ✅ якщо вибрана конкретна точка — фільтруємо
+    const targetPlaceIds =
+      selectedPlaceId === "all"
+        ? allowedPlaceIds
+        : allowedPlaceIds.includes(selectedPlaceId)
+        ? [selectedPlaceId]
+        : [];
+
+    if (targetPlaceIds.length === 0) {
       setItems([]);
       setLoading(false);
       return;
     }
 
+    // 1) збираємо всі відгуки по точках
     const all = [];
-    for (const pid of placeIds) {
+    for (const pid of targetPlaceIds) {
       const rq = query(collection(db, "reviews"), where("placeId", "==", pid));
       const rs = await getDocs(rq);
       rs.docs.forEach((d) => all.push({ id: d.id, ...d.data() }));
@@ -74,20 +124,79 @@ export default function CompanyReviewsScreen({ navigation, user }) {
       return tb - ta;
     });
 
-    setItems(all);
+    // 2) підтягнути профілі авторів (нік + фото)
+    const uids = Array.from(new Set(all.map((r) => pickAuthorUid(r)).filter(Boolean)));
+
+    const profiles = {}; // uid -> { name, photoUrl }
+    await Promise.all(
+      uids.map(async (uid) => {
+        try {
+          const snap = await getDoc(doc(db, "users", uid));
+          const data = snap.exists() ? snap.data() : null;
+
+          const name =
+            data?.nickname || data?.companyName || data?.displayName || data?.name || "";
+
+          profiles[uid] = {
+            name,
+            photoUrl: data?.photoUrl || "",
+          };
+        } catch {
+          profiles[uid] = { name: "", photoUrl: "" };
+        }
+      })
+    );
+
+    // 3) збагатити items
+    const enriched = all.map((r) => {
+      const uid = pickAuthorUid(r);
+      return {
+        ...r,
+        authorUid: uid || r.authorUid,
+        authorProfile: uid ? profiles[uid] : null,
+      };
+    });
+
+    setItems(enriched);
     setLoading(false);
   };
 
+  const loadAll = async () => {
+    try {
+      const places = await loadMyPlaces();
+      await loadReviews(places);
+    } catch (e) {
+      alert(e?.message || "Помилка завантаження");
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const unsub = navigation.addListener("focus", () => load().catch((e) => alert(e.message)));
-    load().catch((e) => alert(e.message));
+    const unsub = navigation.addListener("focus", () => loadAll());
+    loadAll();
     return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation]);
 
+  // ✅ якщо змінили вибір точки — перезавантажити відгуки
+  useEffect(() => {
+    if (!me) return;
+    loadReviews().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlaceId]);
+
+  const selectedPlaceLabel = useMemo(() => {
+    if (selectedPlaceId === "all") return "📌 Усі мої точки";
+    const p = myPlaces.find((x) => x.id === selectedPlaceId);
+    return p?.title ? `📍 ${p.title}` : "📍 Обрана точка";
+  }, [selectedPlaceId, myPlaces]);
+
+  // ===== reply images helpers =====
   const addUris = (reviewId, uris) => {
     setReplyUris((p) => {
       const prev = p[reviewId] || [];
-      return { ...p, [reviewId]: [...prev, ...uris].slice(0, 4) };
+      const merged = [...prev, ...uris].slice(0, 4);
+      return { ...p, [reviewId]: merged };
     });
   };
 
@@ -129,7 +238,10 @@ export default function CompanyReviewsScreen({ navigation, user }) {
   };
 
   const removeReplyUri = (reviewId, uri) => {
-    setReplyUris((p) => ({ ...p, [reviewId]: (p[reviewId] || []).filter((x) => x !== uri) }));
+    setReplyUris((p) => ({
+      ...p,
+      [reviewId]: (p[reviewId] || []).filter((x) => x !== uri),
+    }));
   };
 
   const sendReply = async (review) => {
@@ -160,7 +272,7 @@ export default function CompanyReviewsScreen({ navigation, user }) {
       setReplyDraft((p) => ({ ...p, [reviewId]: "" }));
       setReplyUris((p) => ({ ...p, [reviewId]: [] }));
 
-      await load();
+      await loadReviews();
       alert("Відповідь додано ✅");
     } catch (e) {
       alert(e?.message || "Помилка відповіді");
@@ -169,9 +281,46 @@ export default function CompanyReviewsScreen({ navigation, user }) {
     }
   };
 
+  const renderAuthorLine = (item) => {
+    const name =
+      item.authorProfile?.name || item.authorName || item.authorEmail || "Користувач";
+    const photoUrl = item.authorProfile?.photoUrl || item.authorPhotoUrl || "";
+
+    return (
+      <View style={styles.authorRow}>
+        {photoUrl ? (
+          <Image source={{ uri: photoUrl }} style={styles.authorAvatar} />
+        ) : (
+          <View style={styles.authorAvatarPh}>
+            <Text style={styles.authorAvatarPhText}>👤</Text>
+          </View>
+        )}
+
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            ⭐ {item.rating || 0} — {name}
+          </Text>
+          {item.authorEmail ? (
+            <Text style={styles.authorSub} numberOfLines={1}>
+              {item.authorEmail}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Відгуки на мої точки</Text>
+
+      {/* ✅ селект точки */}
+      <TouchableOpacity style={styles.select} onPress={() => setPlaceModal(true)} activeOpacity={0.9}>
+        <Text style={styles.selectText} numberOfLines={1}>
+          {selectedPlaceLabel}
+        </Text>
+        <Text style={styles.chev}>▾</Text>
+      </TouchableOpacity>
 
       {loading ? (
         <Text style={styles.muted}>Завантаження...</Text>
@@ -185,9 +334,7 @@ export default function CompanyReviewsScreen({ navigation, user }) {
           renderItem={({ item }) => (
             <View style={styles.card}>
               <TouchableOpacity onPress={() => navigation.navigate("PlaceDetails", { placeId: item.placeId })}>
-                <Text style={styles.cardTitle}>
-                  ⭐ {item.rating || 0} — {item.authorName || item.authorEmail || "Користувач"}
-                </Text>
+                {renderAuthorLine(item)}
                 <Text style={styles.cardText}>{item.text || "—"}</Text>
               </TouchableOpacity>
 
@@ -268,6 +415,55 @@ export default function CompanyReviewsScreen({ navigation, user }) {
           )}
         />
       )}
+
+      {/* ✅ модалка вибору точки (тільки мої) */}
+      <Modal visible={placeModal} transparent animationType="fade" onRequestClose={() => setPlaceModal(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setPlaceModal(false)} />
+
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Вибери точку</Text>
+
+            <TouchableOpacity
+              style={[styles.modalItem, selectedPlaceId === "all" && styles.modalItemActive]}
+              onPress={() => {
+                setSelectedPlaceId("all");
+                setPlaceModal(false);
+              }}
+              activeOpacity={0.9}
+            >
+              <Text style={[styles.modalItemText, selectedPlaceId === "all" && styles.modalItemTextActive]}>
+                📌 Усі мої точки
+              </Text>
+            </TouchableOpacity>
+
+            <ScrollView style={{ maxHeight: 360 }}>
+              {myPlaces.map((p) => {
+                const active = p.id === selectedPlaceId;
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={[styles.modalItem, active && styles.modalItemActive]}
+                    onPress={() => {
+                      setSelectedPlaceId(p.id);
+                      setPlaceModal(false);
+                    }}
+                    activeOpacity={0.9}
+                  >
+                    <Text style={[styles.modalItemText, active && styles.modalItemTextActive]} numberOfLines={2}>
+                      📍 {p.title || "Без назви"}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity style={styles.modalClose} onPress={() => setPlaceModal(false)}>
+              <Text style={styles.modalCloseText}>Закрити</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -278,6 +474,22 @@ function makeStyles(c) {
     muted: { color: c.muted, fontWeight: "700" },
     title: { fontSize: 22, fontWeight: "900", color: c.text, marginBottom: 12 },
 
+    // ✅ select
+    select: {
+      height: 48,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 16,
+      paddingHorizontal: 12,
+      marginBottom: 6,
+      backgroundColor: c.surface,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    selectText: { color: c.text, fontWeight: "900", flex: 1, paddingRight: 10 },
+    chev: { color: c.muted, fontSize: 16, fontWeight: "900" },
+
     card: {
       marginTop: 10,
       backgroundColor: c.card,
@@ -286,8 +498,24 @@ function makeStyles(c) {
       borderRadius: 16,
       padding: 12,
     },
+
+    authorRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    authorAvatar: { width: 42, height: 42, borderRadius: 14, backgroundColor: c.surface },
+    authorAvatarPh: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    authorAvatarPhText: { fontSize: 18 },
+    authorSub: { color: c.muted, fontWeight: "700", fontSize: 12, marginTop: 2 },
+
     cardTitle: { color: c.text, fontWeight: "900" },
-    cardText: { color: c.text, marginTop: 6 },
+    cardText: { color: c.text, marginTop: 8 },
 
     replyBox: {
       marginTop: 12,
@@ -341,5 +569,33 @@ function makeStyles(c) {
       paddingVertical: 4,
     },
     thumbXText: { color: "#fff", fontWeight: "900" },
+
+    // ✅ modal
+    modalOverlay: { flex: 1, justifyContent: "center", padding: 18 },
+    modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: c.overlay },
+    modalCard: {
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: c.border,
+      padding: 14,
+    },
+    modalTitle: { fontSize: 16, fontWeight: "900", color: c.text, marginBottom: 12 },
+
+    modalItem: {
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      backgroundColor: c.card,
+      borderWidth: 1,
+      borderColor: c.border,
+      marginBottom: 8,
+    },
+    modalItemActive: { backgroundColor: c.primary, borderColor: c.primary },
+    modalItemText: { color: c.text, fontWeight: "900" },
+    modalItemTextActive: { color: "#fff" },
+
+    modalClose: { marginTop: 6, paddingVertical: 10, alignItems: "center" },
+    modalCloseText: { color: c.muted, fontWeight: "800" },
   });
 }

@@ -1,20 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, FlatList } from "react-native";
 import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
-
 import { useTheme } from "../theme/ThemeContext";
+
+function statusLabel(status) {
+  if (status === "approved") return "✅ Підтверджено";
+  if (status === "pending") return "⏳ На модерації";
+  if (status === "rejected") return "❌ Відхилено";
+  return status ? String(status) : "⏳ На модерації";
+}
 
 export default function CompanyHomeScreen({ navigation }) {
   const { theme } = useTheme();
-  const colors = theme.colors;
-
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const c = theme.colors;
+  const styles = useMemo(() => makeStyles(c), [c]);
 
   const [places, setPlaces] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const loadMyPlaces = async () => {
+  const loadMyPlaces = useCallback(async () => {
     const uid = auth.currentUser?.uid;
 
     if (!uid) {
@@ -40,13 +46,26 @@ export default function CompanyHomeScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadMyPlaces();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadMyPlaces]);
 
   useEffect(() => {
     const unsub = navigation.addListener("focus", loadMyPlaces);
     loadMyPlaces();
     return unsub;
-  }, [navigation]);
+  }, [navigation, loadMyPlaces]);
+
+  const openMap = (focusPlaceId) => {
+    navigation.navigate("Home", focusPlaceId ? { focusPlaceId } : undefined);
+  };
 
   return (
     <View style={styles.container}>
@@ -57,7 +76,7 @@ export default function CompanyHomeScreen({ navigation }) {
           <Text style={styles.btnPrimaryText}>+ Додати місце</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.btnGhost} onPress={() => navigation.navigate("Home")}>
+        <TouchableOpacity style={styles.btnGhost} onPress={() => openMap()}>
           <Text style={styles.btnGhostText}>На карту</Text>
         </TouchableOpacity>
       </View>
@@ -73,10 +92,28 @@ export default function CompanyHomeScreen({ navigation }) {
           data={places}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingBottom: 24 }}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
           renderItem={({ item }) => (
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>{item.title}</Text>
-              <Text style={styles.cardMeta}>Статус: {item.status || "pending"}</Text>
+              <View style={styles.cardHead}>
+                <Text style={styles.cardTitle} numberOfLines={1}>
+                  {item.title || "Місце"}
+                </Text>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{statusLabel(item.status)}</Text>
+                </View>
+              </View>
+
+              {item.address ? (
+                <Text style={styles.cardMeta} numberOfLines={2}>
+                  📍 {item.address}
+                </Text>
+              ) : (
+                <Text style={styles.cardMeta} numberOfLines={1}>
+                  Координати: {Number(item.latitude || 0).toFixed(4)}, {Number(item.longitude || 0).toFixed(4)}
+                </Text>
+              )}
 
               <View style={styles.row}>
                 <TouchableOpacity
@@ -86,10 +123,7 @@ export default function CompanyHomeScreen({ navigation }) {
                   <Text style={styles.smallBtnText}>Редагувати</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.smallBtnOutline}
-                  onPress={() => navigation.navigate("Home", { focusPlaceId: item.id })}
-                >
+                <TouchableOpacity style={styles.smallBtnOutline} onPress={() => openMap(item.id)}>
                   <Text style={styles.smallBtnOutlineText}>Показати</Text>
                 </TouchableOpacity>
               </View>
@@ -104,14 +138,20 @@ export default function CompanyHomeScreen({ navigation }) {
 function makeStyles(c) {
   return StyleSheet.create({
     container: { flex: 1, padding: 16, backgroundColor: c.bg },
-    title: { fontSize: 22, fontWeight: "bold", marginBottom: 10, color: c.text },
-    subtitle: { marginTop: 12, fontSize: 16, fontWeight: "800", color: c.text },
-    gray: { color: c.muted, marginTop: 10 },
+    title: { fontSize: 22, fontWeight: "900", marginBottom: 10, color: c.text },
+    subtitle: { marginTop: 12, fontSize: 16, fontWeight: "900", color: c.text },
+    gray: { color: c.muted, marginTop: 10, fontWeight: "700" },
 
     actions: { flexDirection: "row", gap: 10 },
 
-    btnPrimary: { flex: 1, backgroundColor: c.primary, padding: 12, borderRadius: 12, alignItems: "center" },
-    btnPrimaryText: { color: "#fff", fontWeight: "bold" },
+    btnPrimary: {
+      flex: 1,
+      backgroundColor: c.primary,
+      padding: 12,
+      borderRadius: 12,
+      alignItems: "center",
+    },
+    btnPrimaryText: { color: "#fff", fontWeight: "900" },
 
     btnGhost: {
       paddingHorizontal: 14,
@@ -121,18 +161,46 @@ function makeStyles(c) {
       borderColor: c.border,
       backgroundColor: c.card,
     },
-    btnGhostText: { fontWeight: "800", color: c.primary },
+    btnGhostText: { fontWeight: "900", color: c.primary },
 
-    card: { marginTop: 10, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, borderRadius: 14, padding: 12 },
-    cardTitle: { fontSize: 16, fontWeight: "bold", color: c.text },
-    cardMeta: { color: c.muted, marginTop: 4 },
+    card: {
+      marginTop: 10,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.card,
+      borderRadius: 14,
+      padding: 12,
+    },
+
+    cardHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+    cardTitle: { flex: 1, fontSize: 16, fontWeight: "900", color: c.text },
+
+    badge: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    badgeText: { color: c.text, fontWeight: "900", fontSize: 12 },
+
+    cardMeta: { color: c.muted, marginTop: 6, fontWeight: "700" },
 
     row: { flexDirection: "row", gap: 10, marginTop: 10 },
 
     smallBtn: { flex: 1, backgroundColor: c.primary, paddingVertical: 10, borderRadius: 12, alignItems: "center" },
-    smallBtnText: { color: "#fff", fontWeight: "bold" },
+    smallBtnText: { color: "#fff", fontWeight: "900" },
 
-    smallBtnOutline: { flex: 1, borderWidth: 1, borderColor: c.primary, paddingVertical: 10, borderRadius: 12, alignItems: "center" },
-    smallBtnOutlineText: { color: c.primary, fontWeight: "bold" },
+    smallBtnOutline: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: c.primary,
+      paddingVertical: 10,
+      borderRadius: 12,
+      alignItems: "center",
+      backgroundColor: "transparent",
+    },
+    smallBtnOutlineText: { color: c.primary, fontWeight: "900" },
   });
 }

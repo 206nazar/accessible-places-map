@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import MapViewDirections from "react-native-maps-directions";
 import * as Location from "expo-location";
@@ -7,7 +7,9 @@ import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import { useTheme } from "../theme/ThemeContext";
 
-const GOOGLE_MAPS_API_KEY = "AIzaSyAEJuE9-rxXkYqIuCVGJ28yBOeBtrbMiy4"; // ✅ встав сюди
+// ✅ env якщо є, інакше fallback на твій робочий ключ
+const GOOGLE_MAPS_API_KEY =
+  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyAEJuE9-rxXkYqIuCVGJ28yBOeBtrbMiy4";
 
 export async function fetchPlaces() {
   const q = query(collection(db, "places"), where("status", "==", "approved"));
@@ -15,7 +17,18 @@ export async function fetchPlaces() {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-export default function MapScreen({ navigation, places = [], routeToPlaceId, routeMode }) {
+export default function MapScreen({
+  navigation,
+  places = [],
+  allPlaces = [],
+  routeToPlaceId,
+  routeMode,
+  onCancelRoute,
+
+  // optional: focus from CompanyHome -> Home
+  focusPlaceId,
+  onFocusDone,
+}) {
   const { theme } = useTheme();
   const c = theme.colors;
   const styles = useMemo(() => makeStyles(c), [c]);
@@ -35,9 +48,9 @@ export default function MapScreen({ navigation, places = [], routeToPlaceId, rou
     []
   );
 
-  // ✅ рухома “моя точка”
   useEffect(() => {
     let sub = null;
+
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
@@ -45,7 +58,9 @@ export default function MapScreen({ navigation, places = [], routeToPlaceId, rou
         setHasLocationPermission(granted);
         if (!granted) return;
 
-        const cur = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const cur = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
         setMyLocation({ latitude: cur.coords.latitude, longitude: cur.coords.longitude });
 
         sub = await Location.watchPositionAsync(
@@ -69,11 +84,11 @@ export default function MapScreen({ navigation, places = [], routeToPlaceId, rou
     );
   };
 
-  // ✅ Куди будуємо маршрут
+  // ✅ destination шукаємо по повному списку (allPlaces)
   const destinationPlace = useMemo(() => {
     if (!routeToPlaceId) return null;
-    return (places || []).find((p) => p.id === routeToPlaceId) || null;
-  }, [places, routeToPlaceId]);
+    return (allPlaces || []).find((p) => p.id === routeToPlaceId) || null;
+  }, [allPlaces, routeToPlaceId]);
 
   const destination = useMemo(() => {
     if (!destinationPlace) return null;
@@ -82,6 +97,39 @@ export default function MapScreen({ navigation, places = [], routeToPlaceId, rou
     if (Number.isNaN(latitude) || Number.isNaN(longitude)) return null;
     return { latitude, longitude };
   }, [destinationPlace]);
+
+  // ✅ захист від “плейсхолдер” ключа
+  const apiKeyOk =
+    typeof GOOGLE_MAPS_API_KEY === "string" &&
+    GOOGLE_MAPS_API_KEY.length > 10 &&
+    !GOOGLE_MAPS_API_KEY.includes("PASTE_YOUR_KEY_HERE");
+
+  const hasRoute = !!(routeToPlaceId && myLocation && destination && apiKeyOk);
+
+  const directionsKey = useMemo(() => {
+    if (!routeToPlaceId) return "no_route";
+    return `${routeToPlaceId}_${routeMode || "WALKING"}`;
+  }, [routeToPlaceId, routeMode]);
+
+  // ✅ ФОКУС НА ТОЧКУ (опціонально)
+  useEffect(() => {
+    if (!focusPlaceId) return;
+    if (!mapRef.current) return;
+
+    const p = (allPlaces || []).find((x) => x.id === focusPlaceId);
+    if (!p) return;
+
+    const latitude = Number(p.latitude);
+    const longitude = Number(p.longitude);
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) return;
+
+    mapRef.current.animateToRegion(
+      { latitude, longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 },
+      450
+    );
+
+    onFocusDone?.();
+  }, [focusPlaceId, allPlaces, onFocusDone]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -92,7 +140,6 @@ export default function MapScreen({ navigation, places = [], routeToPlaceId, rou
         showsUserLocation={false}
         showsMyLocationButton={false}
       >
-        {/* ✅ Моя точка */}
         {myLocation ? (
           <Marker
             coordinate={myLocation}
@@ -101,9 +148,9 @@ export default function MapScreen({ navigation, places = [], routeToPlaceId, rou
           />
         ) : null}
 
-        {/* ✅ Маршрут в додатку */}
-        {myLocation && destination && GOOGLE_MAPS_API_KEY ? (
+        {hasRoute ? (
           <MapViewDirections
+            key={directionsKey}
             origin={myLocation}
             destination={destination}
             apikey={GOOGLE_MAPS_API_KEY}
@@ -111,7 +158,6 @@ export default function MapScreen({ navigation, places = [], routeToPlaceId, rou
             strokeWidth={5}
             strokeColor={c.primary}
             onReady={(res) => {
-              // ✅ щоб одразу було видно весь маршрут
               mapRef.current?.fitToCoordinates(res.coordinates, {
                 edgePadding: { top: 90, right: 40, bottom: 220, left: 40 },
                 animated: true,
@@ -119,11 +165,11 @@ export default function MapScreen({ navigation, places = [], routeToPlaceId, rou
             }}
             onError={(err) => {
               console.log("Directions error:", err);
+              Alert.alert("Маршрут не побудовано", "Перевір Google Directions API ключ / ліміти / інтернет.");
             }}
           />
         ) : null}
 
-        {/* ✅ Точки компаній */}
         {(places || []).map((p) => {
           const latitude = Number(p.latitude);
           const longitude = Number(p.longitude);
@@ -142,6 +188,16 @@ export default function MapScreen({ navigation, places = [], routeToPlaceId, rou
       </MapView>
 
       <View style={styles.myBtnWrap}>
+        {hasRoute ? (
+          <TouchableOpacity
+            style={[styles.myBtn, styles.cancelBtn]}
+            onPress={() => onCancelRoute?.()}
+            activeOpacity={0.9}
+          >
+            <Text style={[styles.myBtnText, styles.cancelBtnText]}>✕ Скасувати маршрут</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <TouchableOpacity style={styles.myBtn} onPress={goToMyLocation} activeOpacity={0.9}>
           <Text style={styles.myBtnText}>📍 Моє місце</Text>
         </TouchableOpacity>
@@ -168,6 +224,14 @@ function makeStyles(c) {
       elevation: 4,
     },
     myBtnText: { color: "#fff", fontWeight: "900" },
+
+    cancelBtn: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    cancelBtnText: { color: c.text },
+
     locHint: {
       maxWidth: 240,
       color: c.muted,

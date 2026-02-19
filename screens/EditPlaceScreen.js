@@ -14,6 +14,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import * as Location from "expo-location";
 
 import { db, auth, storage } from "../firebaseConfig";
 import { useTheme } from "../theme/ThemeContext";
@@ -60,21 +61,21 @@ export default function EditPlaceScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // поля як в AddPlace
   const [category, setCategory] = useState("food");
   const [catModal, setCatModal] = useState(false);
 
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [accessInfo, setAccessInfo] = useState("");
+
+  // ✅ локація
+  const [address, setAddress] = useState("");
   const [lat, setLat] = useState("50.6199");
   const [lng, setLng] = useState("26.2516");
 
-  // фото
-  const [photoUrls, setPhotoUrls] = useState([]); // з Firestore (url)
-  const [photoUris, setPhotoUris] = useState([]); // локальні uri, які ще не завантажені
+  const [photoUrls, setPhotoUrls] = useState([]);
+  const [photoUris, setPhotoUris] = useState([]);
 
-  // accessibility
   const [ramp, setRamp] = useState(true);
   const [wideDoor, setWideDoor] = useState(true);
   const [stairs, setStairs] = useState(false);
@@ -82,6 +83,17 @@ export default function EditPlaceScreen({ route, navigation }) {
   const [elevator, setElevator] = useState(false);
 
   const meetsBasicNorms = useMemo(() => ramp && wideDoor && !stairs, [ramp, wideDoor, stairs]);
+
+  // ✅ прийом з PickLocation
+  useEffect(() => {
+    const picked = route?.params?.pickedLocation;
+    if (!picked) return;
+
+    setLat(String(picked.latitude));
+    setLng(String(picked.longitude));
+
+    navigation.setParams({ pickedLocation: null });
+  }, [route?.params?.pickedLocation, navigation]);
 
   useEffect(() => {
     if (!placeId) {
@@ -106,6 +118,7 @@ export default function EditPlaceScreen({ route, navigation }) {
         setDesc(data.description || "");
         setAccessInfo(data.accessInfo || "");
 
+        setAddress(data.address || "");
         setLat(String(data.latitude ?? "50.6199"));
         setLng(String(data.longitude ?? "26.2516"));
 
@@ -194,6 +207,34 @@ export default function EditPlaceScreen({ route, navigation }) {
     }
   };
 
+  // ✅ локація: знайти по адресі
+  const geocodeByAddress = async () => {
+    if (!address.trim()) return alert("Введи адресу.");
+
+    try {
+      await Location.requestForegroundPermissionsAsync();
+      const res = await Location.geocodeAsync(address.trim());
+      if (!res || res.length === 0) return alert("Не знайшов адресу. Спробуй точніше.");
+
+      setLat(String(res[0].latitude));
+      setLng(String(res[0].longitude));
+      alert("Знайдено ✅ Координати підставлено.");
+    } catch (e) {
+      console.log("geocode error:", e);
+      alert(e?.message || "Помилка пошуку адреси");
+    }
+  };
+
+  const openPickOnMap = () => {
+    navigation.navigate("PickLocation", {
+      returnTo: "EditPlace",
+      initial: {
+        latitude: Number(lat) || 50.6199,
+        longitude: Number(lng) || 26.2516,
+      },
+    });
+  };
+
   const save = async () => {
     if (!title.trim()) return alert("Назва обовʼязкова");
 
@@ -206,7 +247,6 @@ export default function EditPlaceScreen({ route, navigation }) {
 
     setSaving(true);
     try {
-      // ✅ завантажити нові фото (локальні uri)
       const uploaded = [];
       for (let i = 0; i < photoUris.length; i++) {
         const url = await uploadPlacePhotoAsync({
@@ -228,17 +268,17 @@ export default function EditPlaceScreen({ route, navigation }) {
         description: desc.trim(),
         accessInfo: accessInfo.trim(),
 
+        address: address.trim(),
         latitude,
         longitude,
 
         photoUrls: nextPhotoUrls,
-        photoUrl: photoUrlCompat, // сумісність
+        photoUrl: photoUrlCompat,
 
         accessibility: { ramp, wideDoor, stairs, accessibleToilet, elevator },
         meetsBasicNorms,
 
         updatedAt: serverTimestamp(),
-
       });
 
       alert("Зміни збережено ✅");
@@ -302,9 +342,34 @@ export default function EditPlaceScreen({ route, navigation }) {
           multiline
         />
 
+        {/* ✅ ЛОКАЦІЯ */}
+        <Text style={styles.section}>Локація</Text>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Адреса (наприклад: Рівне, Соборна 12)"
+          placeholderTextColor={c.muted}
+          value={address}
+          onChangeText={setAddress}
+        />
+
+        <View style={styles.locRow}>
+          <TouchableOpacity style={styles.locBtnPrimary} onPress={geocodeByAddress} activeOpacity={0.9}>
+            <Text style={styles.locBtnPrimaryText}>🔎 Знайти по адресі</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.locBtnOutline} onPress={openPickOnMap} activeOpacity={0.9}>
+            <Text style={styles.locBtnOutlineText}>🗺️ Вибрати на карті</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.hintSmall}>
+          Координати: {Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}
+        </Text>
+
         <Text style={styles.section}>Фото (до 8)</Text>
 
-        {(photoUrls.length || photoUris.length) ? (
+        {photoUrls.length || photoUris.length ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
             <View style={styles.thumbRow}>
               {photoUrls.map((url) => (
@@ -343,24 +408,6 @@ export default function EditPlaceScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.section}>Координати</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Latitude"
-          placeholderTextColor={c.muted}
-          value={lat}
-          onChangeText={setLat}
-          keyboardType="numeric"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Longitude"
-          placeholderTextColor={c.muted}
-          value={lng}
-          onChangeText={setLng}
-          keyboardType="numeric"
-        />
-
         <Text style={styles.section}>Норми (базові)</Text>
         <Row label="Є пандус" value={ramp} onChange={setRamp} styles={styles} />
         <Row label="Широкі двері (≥ 90 см)" value={wideDoor} onChange={setWideDoor} styles={styles} />
@@ -384,7 +431,6 @@ export default function EditPlaceScreen({ route, navigation }) {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* modal категорій */}
       <Modal visible={catModal} transparent animationType="fade" onRequestClose={() => setCatModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setCatModal(false)} />
@@ -462,8 +508,26 @@ function makeStyles(c) {
     selectText: { color: c.text, fontWeight: "700", flex: 1, paddingRight: 10 },
     chev: { color: c.muted, fontSize: 16, fontWeight: "900" },
 
+    // ✅ location row
+    locRow: { flexDirection: "row", gap: 10, marginBottom: 6 },
+    locBtnPrimary: { flex: 1, backgroundColor: c.primary, paddingVertical: 12, borderRadius: 14, alignItems: "center" },
+    locBtnPrimaryText: { color: "#fff", fontWeight: "900" },
+    locBtnOutline: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.card,
+      paddingVertical: 12,
+      borderRadius: 14,
+      alignItems: "center",
+    },
+    locBtnOutlineText: { color: c.text, fontWeight: "900" },
+
+    hintSmall: { color: c.muted, marginBottom: 10, fontWeight: "700" },
+
+    hint: { marginTop: 6, color: c.muted },
+
     // thumbs
-    hintSmall: { color: c.muted, marginBottom: 10 },
     thumbRow: { flexDirection: "row", gap: 10, paddingRight: 12 },
     thumbWrap: {
       width: 96,
@@ -514,8 +578,6 @@ function makeStyles(c) {
 
     row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
     rowText: { flex: 1, paddingRight: 10, color: c.text, fontWeight: "600" },
-
-    hint: { marginTop: 6, color: c.muted },
 
     btnSave: { marginTop: 14, backgroundColor: c.primary, padding: 14, borderRadius: 12, alignItems: "center" },
     btnSaveText: { color: "#fff", fontWeight: "bold" },

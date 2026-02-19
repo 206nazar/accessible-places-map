@@ -9,25 +9,25 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
   const styles = makeStyles(c);
 
   const go = (screen, params) => {
-    onClose();
+    onClose?.();
     navigation.navigate(screen, params);
   };
 
   const onLogout = async () => {
     try {
       await signOut(auth);
-      onClose();
+      onClose?.();
       navigation.navigate("Home");
     } catch (e) {
       alert(e.message);
     }
   };
-  const isAdmin = !!user && role === "admin";
 
+  const isAdmin = !!user && role === "admin";
   const isCompany = !!user && role === "company";
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
 
@@ -35,6 +35,7 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
           <Text style={styles.title}>Меню</Text>
 
           <Text style={styles.section}>Акаунт</Text>
+
           {isAdmin ? (
             <TouchableOpacity style={styles.item} onPress={() => go("AdminHome")}>
               <Text style={styles.itemText}>🛡️ Адмін панель</Text>

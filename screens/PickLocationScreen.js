@@ -11,11 +11,9 @@ export default function PickLocationScreen({ navigation, route }) {
   const mapRef = useRef(null);
 
   const initial = route?.params?.initial;
-  const onPick = route?.params?.onPick;
+  const returnTo = route?.params?.returnTo || "AddPlace"; // "AddPlace" | "EditPlace"
 
-  const [picked, setPicked] = useState(
-    initial || { latitude: 50.6199, longitude: 26.2516 }
-  );
+  const [picked, setPicked] = useState(initial || { latitude: 50.6199, longitude: 26.2516 });
 
   const region = useMemo(
     () => ({
@@ -28,7 +26,11 @@ export default function PickLocationScreen({ navigation, route }) {
   );
 
   const confirm = () => {
-    if (typeof onPick === "function") onPick(picked);
+    navigation.navigate({
+      name: returnTo,
+      params: { pickedLocation: picked },
+      merge: true,
+    });
     navigation.goBack();
   };
 

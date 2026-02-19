@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -65,7 +65,7 @@ export default function AddPlaceScreen({ navigation, route }) {
   const [desc, setDesc] = useState("");
   const [accessInfo, setAccessInfo] = useState("");
 
-  // ✅ ЛОКАЦІЯ (нове)
+  // ✅ ЛОКАЦІЯ
   const [address, setAddress] = useState("");
   const [lat, setLat] = useState("50.6199");
   const [lng, setLng] = useState("26.2516");
@@ -81,6 +81,18 @@ export default function AddPlaceScreen({ navigation, route }) {
   const [elevator, setElevator] = useState(false);
 
   const meetsBasicNorms = useMemo(() => ramp && wideDoor && !stairs, [ramp, wideDoor, stairs]);
+
+  // ✅ підхоплюємо координати з PickLocation
+  useEffect(() => {
+    const picked = route?.params?.pickedLocation;
+    if (!picked) return;
+
+    setLat(String(picked.latitude));
+    setLng(String(picked.longitude));
+
+    // очистити param, щоб не залипало
+    navigation.setParams({ pickedLocation: null });
+  }, [route?.params?.pickedLocation, navigation]);
 
   const getOwnerName = async (uid) => {
     try {
@@ -158,7 +170,6 @@ export default function AddPlaceScreen({ navigation, route }) {
     if (!address.trim()) return alert("Введи адресу.");
 
     try {
-      // інколи допомагає, якщо є дозвіл
       await Location.requestForegroundPermissionsAsync();
 
       const res = await Location.geocodeAsync(address.trim());
@@ -175,13 +186,10 @@ export default function AddPlaceScreen({ navigation, route }) {
 
   const openPickOnMap = () => {
     navigation.navigate("PickLocation", {
+      returnTo: "AddPlace",
       initial: {
         latitude: Number(lat) || 50.6199,
         longitude: Number(lng) || 26.2516,
-      },
-      onPick: (coords) => {
-        setLat(String(coords.latitude));
-        setLng(String(coords.longitude));
       },
     });
   };
@@ -201,7 +209,6 @@ export default function AddPlaceScreen({ navigation, route }) {
     try {
       const ownerName = await getOwnerName(uid);
 
-      // ✅ аплоадимо фото (якщо є)
       const placeTempId = `p_${Date.now()}`;
       const photoUrls = [];
       for (let i = 0; i < photoUris.length; i++) {
@@ -226,10 +233,8 @@ export default function AddPlaceScreen({ navigation, route }) {
         description: desc.trim(),
         accessInfo: accessInfo.trim(),
 
-        // ✅ адреса
         address: address.trim(),
 
-        // ✅ фото
         photoUrls,
         photoUrl,
 
@@ -239,7 +244,7 @@ export default function AddPlaceScreen({ navigation, route }) {
         accessibility: { ramp, wideDoor, stairs, accessibleToilet, elevator },
         meetsBasicNorms,
 
-        status: "approved",
+        status: "approved", // якщо захочеш модерацію — скажеш, зробимо pending
         createdAt: serverTimestamp(),
       });
 
@@ -296,7 +301,6 @@ export default function AddPlaceScreen({ navigation, route }) {
           multiline
         />
 
-        {/* ✅ ЛОКАЦІЯ */}
         <Text style={styles.section}>Локація</Text>
 
         <TextInput
@@ -321,7 +325,6 @@ export default function AddPlaceScreen({ navigation, route }) {
           Координати: {Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}
         </Text>
 
-        {/* ✅ Фото */}
         <Text style={styles.section}>Фото (до 8)</Text>
 
         {photoUris.length ? (
@@ -374,7 +377,6 @@ export default function AddPlaceScreen({ navigation, route }) {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* modal категорій */}
       <Modal visible={catModal} transparent animationType="fade" onRequestClose={() => setCatModal(false)}>
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setCatModal(false)} />
@@ -448,7 +450,6 @@ function makeStyles(c) {
     selectText: { color: c.text, fontWeight: "700", flex: 1, paddingRight: 10 },
     chev: { color: c.muted, fontSize: 16, fontWeight: "900" },
 
-    // ✅ location row
     locRow: { flexDirection: "row", gap: 10, marginBottom: 6 },
     locBtnPrimary: { flex: 1, backgroundColor: c.primary, paddingVertical: 12, borderRadius: 14, alignItems: "center" },
     locBtnPrimaryText: { color: "#fff", fontWeight: "900" },
@@ -465,7 +466,6 @@ function makeStyles(c) {
 
     hintSmall: { color: c.muted, marginBottom: 10, fontWeight: "700" },
 
-    // ✅ thumbnails
     thumbRow: { flexDirection: "row", gap: 10, paddingRight: 12 },
     thumbWrap: {
       width: 96,
@@ -512,7 +512,6 @@ function makeStyles(c) {
     btnSave: { marginTop: 14, backgroundColor: c.primary, padding: 14, borderRadius: 12, alignItems: "center" },
     btnSaveText: { color: "#fff", fontWeight: "bold" },
 
-    // modal
     modalOverlay: { flex: 1, justifyContent: "center", padding: 18 },
     modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: c.overlay },
     modalCard: { backgroundColor: c.surface, borderRadius: 16, borderWidth: 1, borderColor: c.border, padding: 14 },

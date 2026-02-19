@@ -1,9 +1,7 @@
-// theme/ThemeContext.js
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const STORAGE_KEY = "APP_THEME_MODE"; // "light" | "dark"
-
 const ThemeContext = createContext(null);
 
 const light = {
@@ -41,7 +39,7 @@ const dark = {
 };
 
 export function ThemeProvider({ children }) {
-  const [mode, setMode] = useState("light");
+  const [mode, setMode] = useState("dark"); // 👈 краще одразу dark (у тебе дизайн під dark)
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -65,10 +63,7 @@ export function ThemeProvider({ children }) {
 
   const toggleTheme = () => setThemeMode(mode === "dark" ? "light" : "dark");
 
-  const value = useMemo(
-    () => ({ mode, theme, setThemeMode, toggleTheme, ready }),
-    [mode, theme, ready]
-  );
+  const value = useMemo(() => ({ mode, theme, setThemeMode, toggleTheme, ready }), [mode, theme, ready]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

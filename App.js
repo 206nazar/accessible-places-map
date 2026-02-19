@@ -1,13 +1,10 @@
-import { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-
-import { auth, db } from "./firebaseConfig";
+import { View } from "react-native";
 
 import HomeScreen from "./screens/HomeScreen";
 import CompanyHomeScreen from "./screens/CompanyHomeScreen";
+import CompanyReviewsScreen from "./screens/CompanyReviewsScreen";
 import AccountScreen from "./screens/AccountScreen";
 import LoginScreen from "./screens/LoginScreen";
 import RegisterScreen from "./screens/RegisterScreen";
@@ -15,11 +12,11 @@ import RoleSelectScreen from "./screens/RoleSelectScreen";
 import AddPlaceScreen from "./screens/AddPlaceScreen";
 import PlaceDetailsScreen from "./screens/PlaceDetailsScreen";
 import EditPlaceScreen from "./screens/EditPlaceScreen";
+import PickLocationScreen from "./screens/PickLocationScreen";
 
 import MyProfileScreen from "./screens/MyProfileScreen";
 import MyReviewsScreen from "./screens/MyReviewsScreen";
 
-// ✅ NEW
 import AdminHomeScreen from "./screens/AdminHomeScreen";
 import AdminPlacesScreen from "./screens/AdminPlacesScreen";
 import AdminReviewsScreen from "./screens/AdminReviewsScreen";
@@ -30,44 +27,11 @@ import { UserProvider, useUser } from "./context/UserContext";
 const Stack = createNativeStackNavigator();
 
 function AppInner() {
-  const [user, setUser] = useState(null);
-  const [readyAuth, setReadyAuth] = useState(false);
-
   const { theme, ready: readyTheme } = useTheme();
-  const { setUserName } = useUser();
+  const { ready: readyUser, user } = useUser();
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      setUser(u || null);
-
-      if (!u) {
-        setUserName("");
-        setReadyAuth(true);
-        return;
-      }
-
-      try {
-        const snap = await getDoc(doc(db, "users", u.uid));
-        const data = snap.exists() ? snap.data() : null;
-
-        const name =
-          data?.nickname ||
-          data?.companyName ||
-          u.displayName ||
-          (u.email ? u.email.split("@")[0] : "");
-
-        setUserName(name || "");
-      } catch {
-        setUserName(u.email ? u.email.split("@")[0] : "");
-      }
-
-      setReadyAuth(true);
-    });
-
-    return unsub;
-  }, [setUserName]);
-
-  if (!readyAuth || !readyTheme) return null;
+  // простий “splash”, щоб нічого не смикалось
+  if (!readyTheme || !readyUser) return <View style={{ flex: 1, backgroundColor: theme?.colors?.bg || "#000" }} />;
 
   return (
     <NavigationContainer>
@@ -87,7 +51,11 @@ function AppInner() {
           {(props) => <CompanyHomeScreen {...props} user={user} />}
         </Stack.Screen>
 
-        {/* ✅ Admin */}
+        <Stack.Screen name="CompanyReviews" options={{ title: "Відгуки компанії" }}>
+          {(props) => <CompanyReviewsScreen {...props} user={user} />}
+        </Stack.Screen>
+
+        {/* Admin */}
         <Stack.Screen name="AdminHome" options={{ title: "Адмін" }}>
           {(props) => <AdminHomeScreen {...props} user={user} />}
         </Stack.Screen>
@@ -117,6 +85,8 @@ function AppInner() {
         <Stack.Screen name="PlaceDetails" options={{ title: "Місце" }}>
           {(props) => <PlaceDetailsScreen {...props} user={user} />}
         </Stack.Screen>
+
+        <Stack.Screen name="PickLocation" component={PickLocationScreen} options={{ title: "Вибір локації" }} />
 
         <Stack.Screen name="AddPlace" component={AddPlaceScreen} options={{ title: "Додати місце" }} />
         <Stack.Screen name="EditPlace" component={EditPlaceScreen} options={{ title: "Редагувати місце" }} />
