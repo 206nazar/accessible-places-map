@@ -11,7 +11,7 @@ export default function PickLocationScreen({ navigation, route }) {
   const mapRef = useRef(null);
 
   const initial = route?.params?.initial;
-  const returnTo = route?.params?.returnTo || "AddPlace"; // "AddPlace" | "EditPlace"
+  const onPick = route?.params?.onPick; // ✅ callback з AddPlace
 
   const [picked, setPicked] = useState(initial || { latitude: 50.6199, longitude: 26.2516 });
 
@@ -26,11 +26,8 @@ export default function PickLocationScreen({ navigation, route }) {
   );
 
   const confirm = () => {
-    navigation.navigate({
-      name: returnTo,
-      params: { pickedLocation: picked },
-      merge: true,
-    });
+    // ✅ передаємо координати назад через callback (без navigate на AddPlace)
+    if (typeof onPick === "function") onPick(picked);
     navigation.goBack();
   };
 

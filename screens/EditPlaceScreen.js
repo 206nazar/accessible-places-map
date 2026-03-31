@@ -227,10 +227,13 @@ export default function EditPlaceScreen({ route, navigation }) {
 
   const openPickOnMap = () => {
     navigation.navigate("PickLocation", {
-      returnTo: "EditPlace",
       initial: {
         latitude: Number(lat) || 50.6199,
         longitude: Number(lng) || 26.2516,
+      },
+      onPick: (picked) => {
+        setLat(String(picked.latitude));
+        setLng(String(picked.longitude));
       },
     });
   };

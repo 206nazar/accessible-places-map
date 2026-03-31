@@ -6,11 +6,10 @@ import * as Location from "expo-location";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import { useTheme } from "../theme/ThemeContext";
+import Constants from "expo-constants";
 
-// ✅ env якщо є, інакше fallback на твій робочий ключ
 const GOOGLE_MAPS_API_KEY =
-  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyAEJuE9-rxXkYqIuCVGJ28yBOeBtrbMiy4";
-
+  Constants.expoConfig?.extra?.googleDirectionsKey || "AIzaSyAEJuE9-rxXkYqIuCVGJ28yBOeBtrbMiy4";
 export async function fetchPlaces() {
   const q = query(collection(db, "places"), where("status", "==", "approved"));
   const snap = await getDocs(q);

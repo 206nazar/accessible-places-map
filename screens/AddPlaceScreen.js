@@ -82,17 +82,19 @@ export default function AddPlaceScreen({ navigation, route }) {
 
   const meetsBasicNorms = useMemo(() => ramp && wideDoor && !stairs, [ramp, wideDoor, stairs]);
 
-  // ✅ підхоплюємо координати з PickLocation
+  // ✅ ПІДХОПЛЮЄМО КООРДИНАТИ З PickLocation (через params у попередньому екрані)
   useEffect(() => {
     const picked = route?.params?.pickedLocation;
+    const stamp = route?.params?._pickedAt;
+
     if (!picked) return;
 
     setLat(String(picked.latitude));
     setLng(String(picked.longitude));
 
-    // очистити param, щоб не залипало
-    navigation.setParams({ pickedLocation: null });
-  }, [route?.params?.pickedLocation, navigation]);
+    // ✅ очищаємо params, щоб не “липло”
+    navigation.setParams({ pickedLocation: null, _pickedAt: null });
+  }, [route?.params?.pickedLocation, route?.params?._pickedAt, navigation]);
 
   const getOwnerName = async (uid) => {
     try {
@@ -186,10 +188,13 @@ export default function AddPlaceScreen({ navigation, route }) {
 
   const openPickOnMap = () => {
     navigation.navigate("PickLocation", {
-      returnTo: "AddPlace",
       initial: {
         latitude: Number(lat) || 50.6199,
         longitude: Number(lng) || 26.2516,
+      },
+      onPick: (picked) => {
+        setLat(String(picked.latitude));
+        setLng(String(picked.longitude));
       },
     });
   };
@@ -244,7 +249,7 @@ export default function AddPlaceScreen({ navigation, route }) {
         accessibility: { ramp, wideDoor, stairs, accessibleToilet, elevator },
         meetsBasicNorms,
 
-        status: "approved", // якщо захочеш модерацію — скажеш, зробимо pending
+        status: "approved",
         createdAt: serverTimestamp(),
       });
 

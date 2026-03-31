@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "AccessiblePlacesMap",
+    "name": "Мапа доступності",
     "slug": "AccessiblePlacesMap",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -21,13 +21,23 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.AccessiblePlacesMap"
+      "package": "com.anonymous.AccessiblePlacesMap",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyCZLXbi-lFLJXpj4VYXzg7Yry4kS2GVyxc"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "0edf1fbb-9419-4323-8c7f-5fed1364de17"
+      }
+    }
   }
 }

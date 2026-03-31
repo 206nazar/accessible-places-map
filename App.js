@@ -13,13 +13,16 @@ import AddPlaceScreen from "./screens/AddPlaceScreen";
 import PlaceDetailsScreen from "./screens/PlaceDetailsScreen";
 import EditPlaceScreen from "./screens/EditPlaceScreen";
 import PickLocationScreen from "./screens/PickLocationScreen";
-
+import FeedbackScreen from "./screens/FeedbackScreen";
 import MyProfileScreen from "./screens/MyProfileScreen";
 import MyReviewsScreen from "./screens/MyReviewsScreen";
 
 import AdminHomeScreen from "./screens/AdminHomeScreen";
 import AdminPlacesScreen from "./screens/AdminPlacesScreen";
 import AdminReviewsScreen from "./screens/AdminReviewsScreen";
+
+// ✅ ДОДАЛИ
+import ReviewEditScreen from "./screens/ReviewEditScreen";
 
 import { ThemeProvider, useTheme } from "./theme/ThemeContext";
 import { UserProvider, useUser } from "./context/UserContext";
@@ -30,8 +33,8 @@ function AppInner() {
   const { theme, ready: readyTheme } = useTheme();
   const { ready: readyUser, user } = useUser();
 
-  // простий “splash”, щоб нічого не смикалось
-  if (!readyTheme || !readyUser) return <View style={{ flex: 1, backgroundColor: theme?.colors?.bg || "#000" }} />;
+  if (!readyTheme || !readyUser)
+    return <View style={{ flex: 1, backgroundColor: theme?.colors?.bg || "#000" }} />;
 
   return (
     <NavigationContainer>
@@ -81,6 +84,13 @@ function AppInner() {
         <Stack.Screen name="Login" component={LoginScreen} options={{ title: "Вхід" }} />
         <Stack.Screen name="Register" component={RegisterScreen} options={{ title: "Реєстрація" }} />
         <Stack.Screen name="RoleSelect" component={RoleSelectScreen} options={{ title: "Хто ви?" }} />
+
+        <Stack.Screen name="Feedback" component={FeedbackScreen} options={{ title: "Зворотній звʼязок" }} />
+
+        {/* ✅ ДОДАЛИ */}
+        <Stack.Screen name="ReviewEdit" options={{ title: "Відгук" }}>
+          {(props) => <ReviewEditScreen {...props} user={user} />}
+        </Stack.Screen>
 
         <Stack.Screen name="PlaceDetails" options={{ title: "Місце" }}>
           {(props) => <PlaceDetailsScreen {...props} user={user} />}

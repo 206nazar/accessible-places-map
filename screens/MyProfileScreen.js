@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Image, TextInput } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { auth, db, storage } from "../firebaseConfig";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useTheme } from "../theme/ThemeContext";
 import { useUser } from "../context/UserContext";
@@ -41,20 +41,24 @@ export default function MyProfileScreen() {
 
   const loadProfile = async () => {
     if (!user) return;
-    const snap = await getDoc(doc(db, "users", user.uid));
+
+    const userRef = doc(db, "users", user.uid);
+    const snap = await getDoc(userRef);
     const data = snap.exists() ? snap.data() : null;
 
     setProfile(data);
     setNickname(data?.nickname || "");
 
-    // ✅ у контекст (щоб HomeScreen одразу показував)
     setUserName(data?.nickname || data?.companyName || "");
 
     setLoading(false);
   };
 
   useEffect(() => {
-    loadProfile().catch((e) => alert(e.message));
+    loadProfile().catch((e) => {
+      alert(e?.message || "Помилка завантаження профілю");
+      setLoading(false);
+    });
   }, []);
 
   if (!user) {
@@ -76,10 +80,13 @@ export default function MyProfileScreen() {
   const pickFromGallery = async () => {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) return alert("Дай доступ до галереї.");
+      if (!perm.granted) {
+        alert("Дай доступ до галереї.");
+        return;
+      }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaType.Images,
+        mediaTypes: ["images"],
         quality: 0.8,
         allowsEditing: true,
         aspect: [1, 1],
@@ -88,11 +95,19 @@ export default function MyProfileScreen() {
       if (result.canceled) return;
 
       const uri = result.assets?.[0]?.uri;
-      if (!uri) return alert("Не вдалося отримати фото.");
+      if (!uri) {
+        alert("Не вдалося отримати фото.");
+        return;
+      }
 
       const url = await uploadProfilePhotoAsync({ uid: user.uid, uri });
 
-      await updateDoc(doc(db, "users", user.uid), { photoUrl: url });
+      await setDoc(
+        doc(db, "users", user.uid),
+        { photoUrl: url, updatedAt: new Date() },
+        { merge: true }
+      );
+
       setProfile((p) => ({ ...(p || {}), photoUrl: url }));
     } catch (e) {
       console.log("upload gallery error:", e);
@@ -103,10 +118,13 @@ export default function MyProfileScreen() {
   const takeFromCamera = async () => {
     try {
       const perm = await ImagePicker.requestCameraPermissionsAsync();
-      if (!perm.granted) return alert("Дай доступ до камери.");
+      if (!perm.granted) {
+        alert("Дай доступ до камери.");
+        return;
+      }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaType.Images,
+        mediaTypes: ["images"],
         quality: 0.8,
         allowsEditing: true,
         aspect: [1, 1],
@@ -115,11 +133,19 @@ export default function MyProfileScreen() {
       if (result.canceled) return;
 
       const uri = result.assets?.[0]?.uri;
-      if (!uri) return alert("Не вдалося отримати фото.");
+      if (!uri) {
+        alert("Не вдалося отримати фото.");
+        return;
+      }
 
       const url = await uploadProfilePhotoAsync({ uid: user.uid, uri });
 
-      await updateDoc(doc(db, "users", user.uid), { photoUrl: url });
+      await setDoc(
+        doc(db, "users", user.uid),
+        { photoUrl: url, updatedAt: new Date() },
+        { merge: true }
+      );
+
       setProfile((p) => ({ ...(p || {}), photoUrl: url }));
     } catch (e) {
       console.log("upload camera error:", e);
@@ -129,13 +155,23 @@ export default function MyProfileScreen() {
 
   const saveNickname = async () => {
     const name = nickname.trim();
-    if (!name) return alert("Введи нікнейм.");
+    if (!name) {
+      alert("Введи нікнейм.");
+      return;
+    }
 
     try {
-      await updateDoc(doc(db, "users", user.uid), { nickname: name });
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+          nickname: name,
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      );
 
-      // ✅ важливо: одразу в контекст
       setUserName(name);
+      setProfile((p) => ({ ...(p || {}), nickname: name }));
 
       alert("Збережено ✅");
     } catch (e) {
@@ -232,7 +268,13 @@ function makeStyles(c) {
     value: { color: c.text, fontWeight: "900", fontSize: 14 },
 
     btnRow: { flexDirection: "row", gap: 10, marginTop: 14 },
-    btnPrimary: { flex: 1, backgroundColor: c.primary, paddingVertical: 12, borderRadius: 14, alignItems: "center" },
+    btnPrimary: {
+      flex: 1,
+      backgroundColor: c.primary,
+      paddingVertical: 12,
+      borderRadius: 14,
+      alignItems: "center",
+    },
     btnPrimaryText: { color: "#fff", fontWeight: "900" },
 
     btnOutline: {
@@ -246,7 +288,13 @@ function makeStyles(c) {
     },
     btnOutlineText: { color: c.text, fontWeight: "900" },
 
-    section: { marginTop: 16, color: c.text, fontWeight: "900", fontSize: 16, marginBottom: 8 },
+    section: {
+      marginTop: 16,
+      color: c.text,
+      fontWeight: "900",
+      fontSize: 16,
+      marginBottom: 8,
+    },
 
     input: {
       borderWidth: 1,
@@ -257,7 +305,13 @@ function makeStyles(c) {
       padding: 12,
     },
 
-    saveBtn: { marginTop: 12, backgroundColor: c.primary, paddingVertical: 12, borderRadius: 14, alignItems: "center" },
+    saveBtn: {
+      marginTop: 12,
+      backgroundColor: c.primary,
+      paddingVertical: 12,
+      borderRadius: 14,
+      alignItems: "center",
+    },
     saveBtnText: { color: "#fff", fontWeight: "900" },
   });
 }

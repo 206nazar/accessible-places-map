@@ -71,6 +71,7 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
               <TouchableOpacity style={styles.item} onPress={() => go("Register")}>
                 <Text style={styles.itemText}>📝 Реєстрація</Text>
               </TouchableOpacity>
+              
             </>
           )}
 
@@ -81,7 +82,9 @@ export default function SideMenu({ visible, onClose, navigation, user, role }) {
           ) : null}
 
           <View style={styles.divider} />
-
+          <TouchableOpacity style={styles.item} onPress={() => go("Feedback")}>
+            <Text style={styles.itemText}>✉️ Зворотній звʼязок</Text>
+          </TouchableOpacity>
           <Text style={styles.section}>Налаштування</Text>
           <View style={styles.itemRow}>
             <Text style={styles.itemText}>🌙 Темна тема</Text>

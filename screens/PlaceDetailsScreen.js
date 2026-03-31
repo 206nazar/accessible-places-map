@@ -26,17 +26,14 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
   const [reviews, setReviews] = useState([]);
   const [routeModal, setRouteModal] = useState(false);
 
-  // state для ререндеру + ref для стабільного кешу
   const [profiles, setProfiles] = useState({});
   const profilesRef = useRef({});
 
   const load = async () => {
-    // place
     const snap = await getDoc(doc(db, "places", placeId));
     const placeData = snap.exists() ? { id: snap.id, ...snap.data() } : null;
     setPlace(placeData);
 
-    // reviews
     const rq = query(collection(db, "reviews"), where("placeId", "==", placeId));
     const rs = await getDocs(rq);
     const items = rs.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -49,7 +46,6 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
 
     setReviews(items);
 
-    // ✅ підтягуємо профілі авторів (nickname + photoUrl)
     const uids = Array.from(
       new Set(items.map((r) => r.authorUid || r.userUid || r.uid).filter(Boolean))
     );
@@ -86,17 +82,24 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
       profilesRef.current = next;
       setProfiles(next);
     } else {
-      // синхронізація state (на випадок якщо state був пустий)
       if (Object.keys(profiles).length === 0 && Object.keys(cache).length) {
         setProfiles(cache);
       }
     }
   };
 
+  // ✅ первинне завантаження
   useEffect(() => {
     load().catch((e) => alert(e.message));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placeId]);
+
+  // ✅ дуже важливо: коли повернувся з екрану додавання/редагування відгуку — оновити
+  useEffect(() => {
+    const unsub = navigation.addListener("focus", () => {
+      load().catch(() => {});
+    });
+    return unsub;
+  }, [navigation, placeId]);
 
   if (!place) {
     return (
@@ -110,11 +113,10 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
     setRouteModal(false);
     navigation.navigate("Home", {
       routeToPlaceId: place.id,
-      routeMode: mode, // "WALKING" | "DRIVING"
+      routeMode: mode,
     });
   };
 
-  // ✅ фото для показу: спочатку photoUrls[], якщо нема — photoUrl
   const photos =
     Array.isArray(place.photoUrls) && place.photoUrls.length
       ? place.photoUrls
@@ -158,7 +160,6 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
   return (
     <>
       <ScrollView style={styles.container}>
-        {/* ✅ Фото-карусель (на всю ширину) */}
         {photos.length ? (
           <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}>
             {photos.map((url, idx) => (
@@ -175,8 +176,10 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
             style={styles.btn}
             onPress={() => {
               if (!user) return navigation.navigate("Login");
+              // ✅ ВАЖЛИВО: екран "ReviewEdit" має бути доданий в App.js
               navigation.navigate("ReviewEdit", { mode: "add", placeId });
             }}
+            activeOpacity={0.9}
           >
             <Text style={styles.btnText}>Залишити відгук</Text>
           </TouchableOpacity>
@@ -218,10 +221,18 @@ export default function PlaceDetailsScreen({ route, navigation, user }) {
         <View style={{ height: 20 }} />
       </ScrollView>
 
-      {/* ✅ модалка вибору режиму */}
-      <Modal visible={routeModal} transparent animationType="fade" onRequestClose={() => setRouteModal(false)}>
+      <Modal
+        visible={routeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRouteModal(false)}
+      >
         <View style={styles.modalOverlay}>
-          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setRouteModal(false)} />
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setRouteModal(false)}
+          />
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Як прокласти маршрут?</Text>
 
@@ -257,7 +268,6 @@ function makeStyles(c) {
     center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: c.bg },
     muted: { color: c.muted, fontWeight: "700", paddingHorizontal: 14, marginTop: 10 },
 
-    // ✅ фото на всю ширину екрану
     photo: { width: SCREEN_W, height: 220 },
 
     title: { fontSize: 22, fontWeight: "bold", marginTop: 12, paddingHorizontal: 14, color: c.text },
