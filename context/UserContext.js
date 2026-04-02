@@ -7,29 +7,22 @@ const UserContext = createContext({
   ready: false,
   user: null,
   role: null,
-
   userName: "",
   userPhotoUrl: "",
-
-  // якщо десь треба вручну (рідко)
   setUserName: () => {},
 });
 
 export function UserProvider({ children }) {
   const [ready, setReady] = useState(false);
-
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
-
   const [userName, setUserName] = useState("");
   const [userPhotoUrl, setUserPhotoUrl] = useState("");
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      setUser(u || null);
-
-      // reset (на вихід)
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (!u) {
+        setUser(null);
         setRole(null);
         setUserName("");
         setUserPhotoUrl("");
@@ -37,13 +30,16 @@ export function UserProvider({ children }) {
         return;
       }
 
+      setUser(u);
+
       try {
-        const snap = await getDoc(doc(db, "users", u.uid));
+        const userRef = doc(db, "users", u.uid);
+        const snap = await getDoc(userRef);
         const data = snap.exists() ? snap.data() : null;
 
         setRole(data?.role || null);
 
-        const name =
+        const resolvedName =
           data?.nickname ||
           data?.companyName ||
           data?.displayName ||
@@ -51,19 +47,18 @@ export function UserProvider({ children }) {
           u.displayName ||
           (u.email ? u.email.split("@")[0] : "");
 
-        setUserName(name || "");
-        setUserPhotoUrl(data?.photoUrl || "");
-      } catch (e) {
-        // fallback
+        setUserName(resolvedName || "");
+        setUserPhotoUrl(data?.photoUrl || u.photoURL || "");
+      } catch (error) {
         setRole(null);
-        setUserName(u.email ? u.email.split("@")[0] : "");
-        setUserPhotoUrl("");
+        setUserName(u.displayName || (u.email ? u.email.split("@")[0] : ""));
+        setUserPhotoUrl(u.photoURL || "");
       } finally {
         setReady(true);
       }
     });
 
-    return unsub;
+    return () => unsubscribe();
   }, []);
 
   const value = useMemo(

@@ -1,6 +1,6 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { View } from "react-native";
+import { View, ActivityIndicator } from "react-native";
 
 import HomeScreen from "./screens/HomeScreen";
 import CompanyHomeScreen from "./screens/CompanyHomeScreen";
@@ -20,8 +20,6 @@ import MyReviewsScreen from "./screens/MyReviewsScreen";
 import AdminHomeScreen from "./screens/AdminHomeScreen";
 import AdminPlacesScreen from "./screens/AdminPlacesScreen";
 import AdminReviewsScreen from "./screens/AdminReviewsScreen";
-
-// ✅ ДОДАЛИ
 import ReviewEditScreen from "./screens/ReviewEditScreen";
 
 import { ThemeProvider, useTheme } from "./theme/ThemeContext";
@@ -33,8 +31,20 @@ function AppInner() {
   const { theme, ready: readyTheme } = useTheme();
   const { ready: readyUser, user } = useUser();
 
-  if (!readyTheme || !readyUser)
-    return <View style={{ flex: 1, backgroundColor: theme?.colors?.bg || "#000" }} />;
+  if (!readyTheme || !readyUser) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme?.colors?.bg || "#000",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <ActivityIndicator size="large" color={theme?.colors?.primary || "#00bcd4"} />
+      </View>
+    );
+  }
 
   return (
     <NavigationContainer>
@@ -58,13 +68,14 @@ function AppInner() {
           {(props) => <CompanyReviewsScreen {...props} user={user} />}
         </Stack.Screen>
 
-        {/* Admin */}
         <Stack.Screen name="AdminHome" options={{ title: "Адмін" }}>
           {(props) => <AdminHomeScreen {...props} user={user} />}
         </Stack.Screen>
+
         <Stack.Screen name="AdminPlaces" options={{ title: "Адмін: точки" }}>
           {(props) => <AdminPlacesScreen {...props} user={user} />}
         </Stack.Screen>
+
         <Stack.Screen name="AdminReviews" options={{ title: "Адмін: відгуки" }}>
           {(props) => <AdminReviewsScreen {...props} user={user} />}
         </Stack.Screen>
@@ -81,13 +92,22 @@ function AppInner() {
           {(props) => <MyReviewsScreen {...props} user={user} />}
         </Stack.Screen>
 
-        <Stack.Screen name="Login" component={LoginScreen} options={{ title: "Вхід" }} />
-        <Stack.Screen name="Register" component={RegisterScreen} options={{ title: "Реєстрація" }} />
-        <Stack.Screen name="RoleSelect" component={RoleSelectScreen} options={{ title: "Хто ви?" }} />
+        <Stack.Screen name="Login" options={{ title: "Вхід" }}>
+          {(props) => <LoginScreen {...props} user={user} />}
+        </Stack.Screen>
 
-        <Stack.Screen name="Feedback" component={FeedbackScreen} options={{ title: "Зворотній звʼязок" }} />
+        <Stack.Screen name="Register" options={{ title: "Реєстрація" }}>
+          {(props) => <RegisterScreen {...props} user={user} />}
+        </Stack.Screen>
 
-        {/* ✅ ДОДАЛИ */}
+        <Stack.Screen name="RoleSelect" options={{ title: "Хто ви?" }}>
+          {(props) => <RoleSelectScreen {...props} user={user} />}
+        </Stack.Screen>
+
+        <Stack.Screen name="Feedback" options={{ title: "Зворотній звʼязок" }}>
+          {(props) => <FeedbackScreen {...props} user={user} />}
+        </Stack.Screen>
+
         <Stack.Screen name="ReviewEdit" options={{ title: "Відгук" }}>
           {(props) => <ReviewEditScreen {...props} user={user} />}
         </Stack.Screen>
@@ -96,10 +116,17 @@ function AppInner() {
           {(props) => <PlaceDetailsScreen {...props} user={user} />}
         </Stack.Screen>
 
-        <Stack.Screen name="PickLocation" component={PickLocationScreen} options={{ title: "Вибір локації" }} />
+        <Stack.Screen name="PickLocation" options={{ title: "Вибір локації" }}>
+          {(props) => <PickLocationScreen {...props} user={user} />}
+        </Stack.Screen>
 
-        <Stack.Screen name="AddPlace" component={AddPlaceScreen} options={{ title: "Додати місце" }} />
-        <Stack.Screen name="EditPlace" component={EditPlaceScreen} options={{ title: "Редагувати місце" }} />
+        <Stack.Screen name="AddPlace" options={{ title: "Додати місце" }}>
+          {(props) => <AddPlaceScreen {...props} user={user} />}
+        </Stack.Screen>
+
+        <Stack.Screen name="EditPlace" options={{ title: "Редагувати місце" }}>
+          {(props) => <EditPlaceScreen {...props} user={user} />}
+        </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
   );

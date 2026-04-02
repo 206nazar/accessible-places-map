@@ -2,11 +2,12 @@
   "expo": {
     "name": "Мапа доступності",
     "slug": "AccessiblePlacesMap",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "scheme": "accessibleplacesmap",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -32,6 +33,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-dev-client",
+      "@react-native-google-signin/google-signin",
       "expo-web-browser"
     ],
     "extra": {
